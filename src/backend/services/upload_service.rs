@@ -364,5 +364,3 @@ pub fn finish_chunked_upload(
 // TODO: Add function to delete content item (requires updating index and storage usage)
 // TODO: Add function to list content items for a vault (using the index)
 // TODO: Add cleanup for stale/abandoned uploads (maybe in scheduler?)
-
-"" 

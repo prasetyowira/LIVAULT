@@ -218,3 +218,45 @@ Implemented the ChainFusion payment adapter integration (Phase 7) and the DFX wo
 - [Backend Plan](mdc:plans/backend.plan.md) (Phase 7, Phase 8)
 - [Backend Architecture](mdc:plans/backend.architecture.md) (Section 7: Payment Adapter)
 - [Technical Design](mdc:plans/tech.docs.md)
+
+---
+
+## 2024-07-26: Audit Log Implementation
+
+**Overview:** Implemented the basic Audit Log functionality as described in the backend architecture documents.
+
+**Key Components Implemented:**
+1.  **Model:** Created `src/backend/models/audit_log.rs` defining the `AuditLogEntry` struct and `LogAction` enum.
+2.  **Storage Structure:** Updated `src/backend/storage/structures.rs`:
+    *   Added `AUDIT_LOGS: RefCell<StableBTreeMap<StorableString, Cbor<Vec<AuditLogEntry>>, Memory>>`.
+    *   Key format: `audit:{vault_id}`.
+    *   Value: `Cbor<Vec<AuditLogEntry>>`.
+    *   Added helper functions: `create_audit_log_key`, `add_audit_log_entry`, `get_audit_log_entries`.
+    *   The `add_audit_log_entry` function retrieves the current log vector, appends the new entry (setting timestamp and vault_id), and saves it back.
+3.  **Module Exposure:** Updated `src/backend/storage/mod.rs` to re-export the new audit log structures and functions.
+
+**Dependencies:** Relies on `ic-stable-structures`, `candid`, `serde`, `ic-cdk`.
+
+**Architecture Links:**
+*   [backend.architecture.md](plans/backend.architecture.md#4-stable-memory-storage-layout)
+*   [tech.docs.md](plans/tech.docs.md#5-data-model--storage)
+
+**Notes:**
+*   The current implementation retrieves and saves the entire log vector for a vault on each `add_audit_log_entry` call. This might become inefficient for very long logs.
+*   Log capping/rotation logic is not yet implemented and is marked with a `// TODO` in `structures.rs`.
+*   Used the memory region previously allocated for `AUDIT_LOG_DATA_MEM_ID` for the `AUDIT_LOGS` BTreeMap.
+
+## 2024-07-26
+
+**Overview:** Added missing memory getter functions for billing logs to align `memory.rs` with usage in `structures.rs`.
+
+**Key Components Implemented:**
+- Added `BILLING_LOG_INDEX_MEM_ID` and `BILLING_LOG_DATA_MEM_ID` constants in `src/backend/storage/memory.rs`.
+- Implemented `get_billing_log_index_memory()` and `get_billing_log_data_memory()` functions in `src/backend/storage/memory.rs`.
+
+**Dependencies:**
+- `ic-stable-structures`
+
+**Relevant Docs:**
+- [backend.architecture.md](plans/backend.architecture.md)
+- [tech.docs.md](plans/tech.docs.md) 

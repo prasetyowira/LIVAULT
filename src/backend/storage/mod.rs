@@ -11,11 +11,15 @@ pub use cursor::{get_cursor, increment_cursor, set_cursor};
 pub use memory::Memory;
 pub use storable::{Cbor, StorableString};
 pub use structures::{
-    create_member_key,
-    get_value,
-    get_metrics,
-    update_metrics,
     add_billing_entry,
+    add_audit_log_entry,
+    get_audit_log_entries,
+    create_member_key,
+    create_audit_log_key,
+    get_metrics,
+    get_value,
+    update_metrics,
+    AUDIT_LOGS,
     BILLING_LOG,
     CONTENT_INDEX,
     CONTENT_ITEMS,

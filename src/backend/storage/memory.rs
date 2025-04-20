@@ -15,6 +15,8 @@ const AUDIT_LOG_INDEX_MEM_ID: MemoryId = MemoryId::new(6);
 const AUDIT_LOG_DATA_MEM_ID: MemoryId = MemoryId::new(7);
 const METRICS_MEM_ID: MemoryId = MemoryId::new(8);
 // Reserve IDs 9-19 for future use
+const BILLING_LOG_INDEX_MEM_ID: MemoryId = MemoryId::new(9);
+const BILLING_LOG_DATA_MEM_ID: MemoryId = MemoryId::new(10);
 const STAGING_BUFFER_MEM_ID: MemoryId = MemoryId::new(20);
 const CURSOR_MEM_ID: MemoryId = MemoryId::new(21);
 
@@ -70,6 +72,14 @@ pub fn get_audit_log_data_memory() -> Memory {
 
 pub fn get_metrics_memory() -> Memory {
     get_memory(METRICS_MEM_ID)
+}
+
+pub fn get_billing_log_index_memory() -> Memory {
+    get_memory(BILLING_LOG_INDEX_MEM_ID)
+}
+
+pub fn get_billing_log_data_memory() -> Memory {
+    get_memory(BILLING_LOG_DATA_MEM_ID)
 }
 
 pub fn get_staging_buffer_memory() -> Memory {

@@ -32,6 +32,7 @@
 | 7.3 | P7-7.3 | Manual validation with mocked CF API | @qa | To-do | - | Requires running backend locally |
 | 7.4 | P7-7.4 | Extend Billing models for multi‑token | @wira | Done | 2024-07-26 | Added fields to `BillingEntry` in `models/billing.rs` |
 | 8.1 | P8-8.1 | dfx workspace config | @wira | Done | 2024-07-26 | Created `dfx.json` at workspace root |
+| 9.1 | - | Implement Audit Log storage | @wira | Done | 2024-07-26 | Added models, structures, helpers per architecture |
 
 Legend:
 * **To‑do** – not started
