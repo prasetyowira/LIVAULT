@@ -9,6 +9,11 @@ pub mod utils;
 
 #[ic_cdk::init]
 fn init() {
+    // Setup panic hook for better error reporting
+    std::panic::set_hook(Box::new(|info| {
+        ic_cdk::println!("Canister panicked: {:?}", info);
+    }));
+
     ic_cdk::println!("LiVault backend canister initialized.");
     // Initialization logic will go here, e.g., setting up stable memory
 }

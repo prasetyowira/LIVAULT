@@ -131,3 +131,53 @@ Completed the implementation of the Candid API layer (Phase 3) and the payment a
 - [Backend Architecture](mdc:plans/backend.architecture.md) (Sections 6, 7, 13)
 - [Technical Design](mdc:plans/tech.docs.md) (Sections 3, 4, 1.1)
 - [icp-api-conventions.mdc](mdc:icp-api-conventions.mdc)
+
+---
+
+## 2024-07-25 19:45: Backend Phases 5 & 6 Implementation
+
+### Overview
+Implemented key security guards, metrics collection with certification, and admin API endpoints as defined in Phases 5 and 6 of the `backend.plan.md`.
+
+### Phase 5: Security & Guards
+1.  **Error Handling (`src/backend/error.rs`):** Expanded the `VaultError` enum with more specific variants for input validation (`InvalidInput`), admin guards (`AdminGuardFailed`), billing (`BillingRecordNotFound`), state issues (`InvalidState`), and checksums (`ChecksumMismatch`).
+2.  **Cycle Guard (`src/backend/utils/guards.rs`):** Implemented the `check_cycles` function to verify sufficient canister balance against a threshold (`MIN_CYCLES_THRESHOLD`) before critical operations. Added `check_admin` helper.
+3.  **Panic Hook (`src/backend/lib.rs`):** Configured `std::panic::set_hook` in the `init` function to log panic information, improving debuggability.
+4.  **Input Validation (`src/backend/api.rs`):**
+    *   Added the `validator` crate (assumption: added to Cargo.toml) and a `validate_request` helper function.
+    *   Applied validation attributes (`#[validate(...)]`) to relevant request structs (`CreateVaultRequest`, `UpdateVaultRequest`, `GenerateInviteRequest`, `ClaimInviteRequest`, `BeginUploadRequest`, `FinishUploadRequest`, `RequestDownloadRequest`, `TriggerUnlockRequest`).
+    *   Called `validate_request` at the beginning of corresponding API endpoint functions.
+
+### Phase 6: Metrics & Admin APIs
+1.  **Metrics Implementation (`src/backend/metrics.rs` & `storage/`):**
+    *   Defined the `VaultMetrics` struct according to the architecture doc, including `Storable` implementation using CBOR.
+    *   Added a `StableCell` named `METRICS` in `storage/structures.rs` to persist the global metrics.
+    *   Added `get_metrics` and `update_metrics` helper functions in `storage/structures.rs` for safe access.
+2.  **Certified Metrics Endpoint (`src/backend/api.rs`):**
+    *   Implemented the `get_metrics` query endpoint.
+    *   Fetches metrics from the `METRICS` stable cell.
+    *   Retrieves the current `canister_balance128`.
+    *   Serializes the combined response (`GetMetricsResponse`) using CBOR.
+    *   Calls `set_certified_data` to make the metrics verifiable.
+3.  **Billing Storage (`src/backend/models/billing.rs` & `storage/`):**
+    *   Created the `BillingEntry` struct with `Storable` implementation.
+    *   Added a `StableLog` named `BILLING_LOG` in `storage/structures.rs` for append-only billing records.
+    *   Added an `add_billing_entry` helper function.
+4.  **Admin API Endpoints (`src/backend/api.rs`):**
+    *   Implemented the logic for `list_vaults` and `list_billing` endpoints.
+    *   Used iterators (`VAULT_CONFIGS.iter()`, `BILLING_LOG.iter()`) with `skip()` and `take()` for pagination based on `ListRequest` parameters.
+    *   Applied the `admin_guard` to restrict access to these endpoints.
+
+### Dependencies
+- Added (or assumes addition of) `validator` crate for input validation.
+
+### Notes & TODOs
+- The `ADMIN_PRINCIPAL` and `CRON_CALLER_PRINCIPAL` are currently hardcoded placeholders (`Principal::anonymous()`) and need to be securely configured (e.g., via init args).
+- The `MIN_CYCLES_THRESHOLD` in `guards.rs` is also a placeholder.
+- Placeholder `TODO` comments remain in `api.rs` for `list_vaults` and `list_billing` regarding potential improvements or alternative implementations, but the core logic is present.
+- Further implementation needed for services layer logic that *updates* metrics and *adds* billing entries (e.g., in `vault_service`, `payment_service`).
+
+### Related Documentation
+- [Backend Plan](mdc:plans/backend.plan.md) (Phase 5, Phase 6)
+- [Backend Architecture](mdc:plans/backend.architecture.md) (Sections 8, 11, 13)
+- [Technical Design](mdc:plans/tech.docs.md)

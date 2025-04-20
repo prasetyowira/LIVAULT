@@ -13,9 +13,14 @@ pub use storable::{Cbor, StorableString};
 pub use structures::{
     create_member_key,
     get_value,
+    get_metrics,
+    update_metrics,
+    add_billing_entry,
+    BILLING_LOG,
     CONTENT_INDEX,
     CONTENT_ITEMS,
     INVITE_TOKENS,
+    METRICS,
     VAULT_CONFIGS,
     VAULT_MEMBERS,
 }; 

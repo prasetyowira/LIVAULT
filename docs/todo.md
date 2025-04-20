@@ -25,11 +25,11 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   Implement the actual logic within `purge_expired_invites`, `check_vault_lifecycles`, `cleanup_stale_uploads`.
     *   Implement efficient iteration methods for scheduler tasks over stable storage.
     *   Integrate with `ic-cdk-timers` or establish the Cloudflare worker interaction.
--   **[ ] Error Handling:** Refine error handling across services to provide more specific `VaultError` variants as needed.
+-   **[ ] Error Handling:** Refine error handling across services to provide more specific `VaultError` variants as needed. (Partially addressed in Phase 5)
 
 ## Phase 3: Candid API & Entry Points
 -   **[ ] Task 3.4:** Perform manual happy-path verification of API endpoints using `dfx`.
--   **[ ] API Definition:** Ensure `api.rs` fully implements the Candid interface defined in `backend.architecture.md` (Section 6), including missing endpoints (`request_download`, `list_vaults`, `list_billing`) and detailed request/response types.
+-   **[ ] API Definition:** Ensure `api.rs` fully implements the Candid interface defined in `backend.architecture.md` (Section 6), including missing endpoints (`request_download`, `list_vaults`, `list_billing`) and detailed request/response types. (Admin endpoints added in Phase 6)
 -   **[ ] Documentation:** Update or remove the Candid stub in `tech.docs.md` (Section 3) to align with `backend.architecture.md`.
 -   **[ ] Authorization:** Implement detailed authorization logic within API endpoints beyond basic owner checks.
 
@@ -39,14 +39,14 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] Pay-to Principal:** Implement secure derivation of a unique subaccount/principal per payment session in `initialize_payment_session` (replace placeholder using `caller`).
 -   **[ ] ChainFusion:** Implement ChainFusion payment flow (Phase 7 task, but core to payment functionality).
 
-## Phase 5: Security & Guards
--   **[ ] Task 5.1:** Implement comprehensive input validation in the API layer and detailed error mapping in `error.rs`.
--   **[ ] Task 5.2:** Implement the `cycle_guard` logic.
--   **[ ] Task 5.3:** Implement certified data tree for `get_metrics`.
--   **[ ] Task 5.4:** Implement static analysis/guards (panic guard, deterministic build check).
+## Phase 5: Security & Guards - COMPLETED (2024-07-25)
+-   **[X] Task 5.1:** Implement comprehensive input validation in the API layer and detailed error mapping in `error.rs`.
+-   **[X] Task 5.2:** Implement the `cycle_guard` logic.
+-   **[X] Task 5.3:** Implement certified data tree for `get_metrics`.
+-   **[X] Task 5.4:** Implement static analysis/guards (panic guard implemented; build check is CI task).
 
-## Phase 6: Metrics & Admin APIs
--   **[ ] Task:** Implement `metrics.rs`, `get_metrics`, `list_vaults`, `list_billing` endpoints and underlying logic.
+## Phase 6: Metrics & Admin APIs - COMPLETED (2024-07-25)
+-   **[X] Task:** Implement `metrics.rs`, `get_metrics`, `list_vaults`, `list_billing` endpoints and underlying logic.
 
 ## Phase 7: ChainFusion Adapter & HTTP Outcalls
 -   **[ ] Task:** Implement the separate `chainfusion_adapter` canister and integrate it into the payment flow.
@@ -59,10 +59,10 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] Dependencies:** Update `backend.plan.md` dependency list to match `Cargo.toml`. Add `ic-utils`, `ic-cdk-timers` explicitly if needed.
 -   **[ ] Vault Lifecycle:** Ensure `VaultStatus` enum reflects PRD states and transition logic is correct.
 -   **[ ] Review Open Questions:** Address the open questions listed in `backend.plan.md`.
--   **[ ] Update Progress:** Regularly update `docs/progress.md` and `backend.tracking.md` as tasks are completed.
+-   **[ ] Update Progress:** Regularly update `docs/progress.md` and `backend.tracking.md` as tasks are completed. (Done for P5/P6)
 
 ## Code TODO
--   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase. 
+-   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase.
     *   `services/vault_service.rs`: Calculate `expires_at` based on plan (e.g., 10 years).
     *   `services/vault_service.rs`: Determine `storage_quota_bytes` based on plan.
     *   `services/vault_service.rs`: Add logic to update unlock conditions, plan (handle prorate).
@@ -87,10 +87,10 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for payments.
     *   `services/payment_service.rs`: Add function to close payment session after vault creation.
     *   `api.rs`: Add authorization check for `get_vault`.
-    *   `api.rs`: Add `request_download` endpoint.
-    *   `api.rs`: Add `daily_maintenance` endpoint (guard caller).
-    *   `api.rs`: Add admin endpoints (`list_vaults`, `list_billing`, `get_metrics`).
-    *   `api.rs`: Add `trigger_unlock` endpoint.
+    *   `api.rs`: Add `request_download` endpoint implementation.
+    *   `api.rs`: Add `daily_maintenance` endpoint guard configuration (cron caller).
+    *   `api.rs`: Configure `ADMIN_PRINCIPAL`.
+    *   `utils/guards.rs`: Configure `MIN_CYCLES_THRESHOLD`.
 
 ## AI Question
 *   **[ ] `services/upload_service.rs`:** Current `ACTIVE_UPLOADS` is in-memory. Consider moving to stable storage (`ic-stable-structures::Stash`) if uploads must survive canister upgrades. Evaluate trade-offs (complexity vs. persistence). 

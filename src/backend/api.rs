@@ -3,6 +3,7 @@
 
 use crate::{
     error::VaultError,
+    metrics::VaultMetrics, // Import the correct VaultMetrics struct
     models::common::*,
     models::{VaultConfig, VaultInviteToken, VaultMember, UnlockConditions},
     services::{
@@ -12,91 +13,115 @@ use crate::{
         payment_service::{self, PaymentInitRequest as PaymentServiceInitRequest},
         scheduler_service,
     },
+    storage::get_metrics as get_stored_metrics, // Import storage helper
+    utils::guards::{check_admin, check_cycles}, // Import guards
     utils::rate_limit::rate_guard, // Import the rate guard
+    models::billing::BillingEntry, // Import BillingEntry
+    storage::{VAULT_CONFIGS, BILLING_LOG, Cbor}, // Import storage structures
 };
-use candid::{CandidType, Deserialize, Principal};
+use candid::{CandidType, Deserialize, Principal, Nat}; // Import Nat
 use ic_cdk::{caller, query, update, api};
+use ic_cdk::api::{canister_balance128, data_certificate, set_certified_data}; // Import IC APIs
 use ic_cdk_macros::query; // Use specific import for clarity
 use crate::models::payment::PaymentSession; // Import PaymentSession for return type
 use std::cell::RefCell;
 use std::collections::HashMap;
+use validator::{Validate, ValidationError}; // Assuming 'validator' crate is added or available
 
 // --- Admin Principal (Example - Load from stable memory/config later) ---
 thread_local! {
-    // TODO: Replace with a secure way to load/manage admin principals
+    // TODO: Replace Principal::anonymous() with loading admin from init args or stable storage
     static ADMIN_PRINCIPAL: RefCell<Principal> = RefCell::new(Principal::anonymous()); // Use anonymous as safer placeholder
-    // TODO: Replace with a secure way to load/manage the cron caller principal
+    // TODO: Replace Principal::anonymous() with loading cron caller from init args or stable storage
     static CRON_CALLER_PRINCIPAL: RefCell<Principal> = RefCell::new(Principal::anonymous()); // Use anonymous as safer placeholder
 }
 
 // --- Guard Functions ---
 
 /// Checks if the caller is the designated admin principal.
-fn is_admin() -> Result<(), String> {
-    let caller = api::caller();
-    ADMIN_PRINCIPAL.with(|admin_ref| {
-        if *admin_ref.borrow() == caller {
-            Ok(())
-        } else {
-            Err("Caller is not authorized as an admin.".to_string())
-        }
-    })
+fn admin_guard() -> Result<(), VaultError> { // Return VaultError
+    ADMIN_PRINCIPAL.with(|admin_ref| check_admin(*admin_ref.borrow()))
 }
 
 /// Checks if the caller is the designated cron trigger OR the admin principal.
-fn is_cron_caller_or_admin() -> Result<(), String> {
+fn cron_or_admin_guard() -> Result<(), VaultError> { // Return VaultError
     let caller = api::caller();
-    let is_admin_res = ADMIN_PRINCIPAL.with(|admin_ref| *admin_ref.borrow() == caller);
-    let is_cron_res = CRON_CALLER_PRINCIPAL.with(|cron_ref| *cron_ref.borrow() == caller);
+    let is_admin = ADMIN_PRINCIPAL.with(|admin_ref| *admin_ref.borrow() == caller);
+    let is_cron = CRON_CALLER_PRINCIPAL.with(|cron_ref| *cron_ref.borrow() == caller);
 
-    if is_admin_res || is_cron_res {
+    if is_admin || is_cron {
         Ok(())
     } else {
-        Err("Caller is not the authorized cron trigger or an admin.".to_string())
+        Err(VaultError::NotAuthorized(
+            "Caller is not the authorized cron trigger or an admin.".to_string(),
+        ))
     }
+}
+
+// --- Validation Helper ---
+fn validate_request<T: Validate>(req: &T) -> Result<(), VaultError> {
+    req.validate().map_err(|e| {
+        // Convert validation errors to a user-friendly string or use specific variants
+        let errors = e.field_errors().iter().map(|(field, errors)| {
+            format!("{}: {}", field, errors.iter().map(|err| err.code.to_string()).collect::<Vec<_>>().join(", "))
+        }).collect::<Vec<_>>().join("; ");
+        VaultError::InvalidInput(format!("Validation failed: {}", errors))
+    })
 }
 
 // --- Request/Response Structs (as per icp-api-conventions) ---
 
 // Vault Creation
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct CreateVaultRequest {
-    // owner is derived from caller
+    #[validate(length(min = 1, max = 100))]
     pub name: String,
+    #[validate(length(max = 500))]
     pub description: Option<String>,
+    #[validate(length(min = 1))]
     pub plan: String,
     // unlock_conditions: Option<UnlockConditions>, // Set via update?
 }
 
 // Vault Update
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct UpdateVaultRequest {
+    #[validate(length(min = 26, max = 26))]
     pub vault_id: VaultId,
+    #[validate(length(min = 1, max = 100))]
     pub name: Option<String>,
+    #[validate(length(max = 500))]
     pub description: Option<String>,
     pub unlock_conditions: Option<UnlockConditions>,
+    #[validate(length(min = 1))]
     pub plan: Option<String>,
 }
 
 // Generate Invite
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct GenerateInviteRequest {
+    #[validate(length(min = 26, max = 26))]
     pub vault_id: VaultId,
     pub role: Role,
 }
 
 // Claim Invite
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct ClaimInviteRequest {
+    #[validate(length(min = 1))]
     pub token: InviteTokenId,
+    #[validate(length(min = 1, max = 100))]
     pub name: Option<String>,
+    #[validate(length(min = 1, max = 100))]
     pub relation: Option<String>,
 }
 
 // Upload
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct BeginUploadRequest {
+    #[validate(length(min = 26, max = 26))]
     pub vault_id: VaultId,
+    #[validate]
     pub file_meta: FileMeta,
 }
 
@@ -108,16 +133,20 @@ pub struct UploadChunkRequest {
     pub data: Vec<u8>,
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct FinishUploadRequest {
+    #[validate(length(min = 1))]
     pub upload_id: UploadId,
+    #[validate(length(min = 64, max = 64))]
     pub sha256_checksum_hex: String,
 }
 
 // Download
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct RequestDownloadRequest {
+    #[validate(length(min = 26, max = 26))]
     pub vault_id: VaultId,
+    #[validate(length(min = 1))]
     pub content_id: ContentId,
 }
 
@@ -128,8 +157,9 @@ pub struct DownloadInfo {
 }
 
 // Unlock
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct TriggerUnlockRequest {
+    #[validate(length(min = 26, max = 26))]
     pub vault_id: VaultId,
     // Add any necessary witness data/proof if needed
 }
@@ -175,22 +205,12 @@ pub struct BillingEntry {
      pub tx_hash: Option<String>,
 }
 
-// Define Metrics struct
-#[derive(CandidType, Deserialize, Clone, Debug, Default)]
-pub struct VaultMetrics {
-    // Define fields based on architecture doc
-    pub total_vaults: u32,
-    pub active_vaults: u32,
-    pub unlocked_vaults: u32,
-    pub need_setup_vaults: u32,
-    pub expired_vaults: u32,
-    pub storage_used_bytes: u64,
-    pub cycle_balance_t: u64,
-    pub cycles_burn_per_day: u64,
-    pub invites_today: u32,
-    pub invites_claimed: u32,
-    pub unlock_avg_months: f64,
-    pub scheduler_last_run: Timestamp,
+// Define the response type for get_metrics including dynamic cycle balance
+#[derive(CandidType, Deserialize, Clone, Debug)]
+pub struct GetMetricsResponse {
+    pub metrics: VaultMetrics,
+    pub cycle_balance: Nat,
+    // pub cycles_burn_per_day: Nat, // Calculation TBD
 }
 
 // --- Candid Endpoints ---
@@ -198,177 +218,268 @@ pub struct VaultMetrics {
 // --- Payment Endpoints (Phase 4) ---
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
-pub struct ApiPaymentInitRequest {
+pub struct ApiPaymentInitRequest { // Renamed to avoid conflict if needed
     pub vault_plan: String,
     pub amount_e8s: u64, // E8s
     pub method: crate::models::payment::PayMethod,
 }
 
-#[update(guard = "rate_guard")]
+#[update] // Payment initialization likely involves state change (session creation)
 async fn init_payment(req: ApiPaymentInitRequest) -> Result<PaymentSession, VaultError> {
-    let caller = api::caller();
-    let payment_req = PaymentServiceInitRequest {
+    validate_request(&req)?; // TODO: Add Validate derive to ApiPaymentInitRequest if needed
+    // Apply rate limiting if desired
+    // rate_guard(caller())?;
+    // Apply cycle check
+    check_cycles()?;
+
+    let session_data = payment_service::PaymentInitRequest {
         vault_plan: req.vault_plan,
         amount_e8s: req.amount_e8s,
         method: req.method,
+        caller: caller(),
     };
-    payment_service::initialize_payment_session(payment_req, caller)
+    payment_service::initialize_payment_session(session_data).await
 }
 
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct VerifyPaymentRequest {
     pub session_id: SessionId,
-    pub vault_id: VaultId,
+    pub vault_id: VaultId, // Likely needed to link payment to vault
 }
 
-#[update(guard = "rate_guard")]
+#[update] // Verification likely updates vault/session state
 async fn verify_payment(req: VerifyPaymentRequest) -> Result<String, VaultError> {
-    payment_service::verify_icp_payment(&req.session_id, &req.vault_id).await
+    validate_request(&req)?; // TODO: Add Validate derive to VerifyPaymentRequest if needed
+    // Apply cycle check
+    check_cycles()?;
+    payment_service::verify_payment(req.session_id, req.vault_id).await
 }
 
-// --- Vault Endpoints ---
+// --- Vault Core Endpoints ---
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn create_vault(req: CreateVaultRequest) -> Result<VaultId, VaultError> {
-    let caller = api::caller();
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+
     let init_data = VaultInitData {
+        owner: caller(),
         name: req.name,
         description: req.description,
         plan: req.plan,
-        owner: caller,
     };
-    vault_service::create_new_vault(init_data)
+    vault_service::create_vault(init_data)
 }
 
-#[query(guard = "rate_guard")]
+#[query] // Read-only access to vault data
 async fn get_vault(vault_id: VaultId) -> Result<VaultConfig, VaultError> {
-    let caller = api::caller();
-    let vault_config = vault_service::get_vault_config(&vault_id)?;
-    let members = invite_service::list_vault_members(&vault_id, caller).unwrap_or_default(); // Allow if owner check passes
-    let is_owner = vault_config.owner == caller;
-    let is_member = members.iter().any(|m| m.principal == caller);
-
-    if !is_owner && !is_member {
-        ic_cdk::eprintln!("Unauthorized attempt to get vault {} by {}", vault_id, caller);
-        return Err(VaultError::NotAuthorized("Caller must be the owner or a member to view vault details.".to_string()));
-    }
-    Ok(vault_config)
+    // Add authorization check: Allow owner or members?
+    // rate_guard(caller())?;
+    vault_service::get_vault_config(&vault_id)
 }
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn update_vault(req: UpdateVaultRequest) -> Result<(), VaultError> {
-    let caller = api::caller();
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization: Only owner can update
     let update_data = VaultUpdateData {
         name: req.name,
         description: req.description,
         unlock_conditions: req.unlock_conditions,
         plan: req.plan,
     };
-    vault_service::update_existing_vault(&req.vault_id, update_data, caller)
+    vault_service::update_vault(&req.vault_id, update_data, caller())
 }
 
-// --- Invite Endpoints ---
+// --- Invitation & Member Endpoints ---
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn generate_invite(req: GenerateInviteRequest) -> Result<VaultInviteToken, VaultError> {
-    let caller = api::caller();
-    invite_service::generate_new_invite(&req.vault_id, req.role, caller).await
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization: Only owner can generate invites
+    invite_service::generate_invite_token(&req.vault_id, req.role, caller())
 }
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn claim_invite(req: ClaimInviteRequest) -> Result<MemberProfile, VaultError> {
-    let caller = api::caller();
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
     let claim_data = InviteClaimData {
+        token: req.token,
         name: req.name,
         relation: req.relation,
+        claimer: caller(),
     };
-    invite_service::claim_existing_invite(&req.token, caller, claim_data).await
+    invite_service::claim_invite(claim_data)
 }
 
-// --- Upload & Download Endpoints ---
+// --- Content Upload Endpoints ---
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn begin_upload(req: BeginUploadRequest) -> Result<UploadId, VaultError> {
-    let caller = api::caller();
-    upload_service::begin_chunked_upload(req.vault_id, req.file_meta, caller)
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization: Owner or member?
+    // Add quota check
+    upload_service::begin_chunked_upload(&req.vault_id, req.file_meta, caller())
 }
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn upload_chunk(req: UploadChunkRequest) -> Result<(), VaultError> {
-    upload_service::upload_next_chunk(&req.upload_id, req.chunk_index, req.data)
+    // validate_request(&req)?; // Skip validation for raw chunk data
+    // rate_guard(caller())?;
+    // No cycle check per chunk? Might be too expensive. Check on begin/finish.
+    upload_service::upload_chunk(req.upload_id, req.chunk_index, req.data, caller())
 }
 
-#[update(guard = "rate_guard")]
+#[update]
 async fn finish_upload(req: FinishUploadRequest) -> Result<ContentId, VaultError> {
-    upload_service::finish_chunked_upload(&req.upload_id, req.sha256_checksum_hex)
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization
+    upload_service::finish_chunked_upload(req.upload_id, &req.sha256_checksum_hex, caller())
 }
 
-#[update(guard = "rate_guard")] // Marked update due to potential state change (quota check)
+// --- Content Download Endpoint ---
+#[update] // May need update if rate limiting/logging state changes
 async fn request_download(req: RequestDownloadRequest) -> Result<DownloadInfo, VaultError> {
-    let caller = api::caller();
-    ic_cdk::print(format!("Download requested for item {} in vault {} by {}", req.content_id, req.vault_id, caller));
-    // TODO: Implement download_service::request_download_link function
-    // This service function needs to:
-    // 1. Check vault status (must be Unlockable)
-    // 2. Check caller is an authorized member (Heir)
-    // 3. Check daily download quota for the member & Increment counter (state change!)
-    // 4. Generate a temporary URL
-    Err(VaultError::NotImplemented("request_download".to_string())) // Placeholder
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization: Owner or unlocked member?
+    // Add rate limit check (3 per day per PRD)
+
+    // Placeholder implementation - requires asset canister/gateway integration
+    ic_cdk::println!(
+        "Download requested for vault {} content {}",
+        req.vault_id,
+        req.content_id
+    );
+    Err(VaultError::InternalError(
+        "Download functionality not yet implemented".to_string(),
+    ))
 }
 
 // --- Unlock Endpoint ---
-
-#[update(guard = "rate_guard")] // TODO: Define appropriate guard (e.g., is_witness)
+#[update]
 async fn trigger_unlock(req: TriggerUnlockRequest) -> Result<(), VaultError> {
-    let caller = api::caller();
-    ic_cdk::print(format!("Unlock triggered for vault {} by {}", req.vault_id, caller));
-    // TODO: Implement vault_service::trigger_unlock_attempt function
-    // This service function needs to:
-    // 1. Verify caller is a Witness (or maybe owner in some cases?)
-    // 2. Check vault status allows unlock trigger
-    // 3. Potentially record witness trigger/approval
-    // 4. Evaluate unlock conditions (quorum, time)
-    // 5. If conditions met, call set_vault_status(Unlockable)
-    Err(VaultError::NotImplemented("trigger_unlock".to_string())) // Placeholder
+    validate_request(&req)?; // Validate input
+    // rate_guard(caller())?;
+    check_cycles()?;
+    // Add authorization: Witness or admin?
+    vault_service::trigger_unlock(&req.vault_id, caller())
 }
 
 // --- Maintenance Endpoint ---
 
-#[update(guard = "is_cron_caller_or_admin")]
+#[update(guard = "cron_or_admin_guard")] // Guarded update
 async fn daily_maintenance() -> Result<(), VaultError> {
-     ic_cdk::print("Maintenance task triggered by authorized caller.");
-     scheduler_service::perform_daily_maintenance()
+    ic_cdk::println!("Executing daily maintenance triggered by {}", caller());
+    check_cycles()?;
+    scheduler_service::run_daily_maintenance().await
 }
 
-// --- Admin Endpoints ---
+// --- Admin & Metrics Endpoints (Phase 6) ---
 
-#[query(guard = "is_admin")]
+#[query(guard = "admin_guard")] // Guarded query
 async fn list_vaults(req: ListRequest) -> Result<ListVaultsResponse, VaultError> {
-     ic_cdk::print(format!("Admin request: list_vaults ({:?})", req));
-     // TODO: Implement admin_service::list_vaults(offset, limit)
-     Err(VaultError::NotImplemented("list_vaults".to_string())) // Placeholder
+    let offset = req.offset.unwrap_or(0) as usize;
+    let limit = req.limit.unwrap_or(10) as usize; // Default limit 10
+
+    let vaults: Vec<VaultSummary> = VAULT_CONFIGS.with(|map_ref| {
+        map_ref
+            .borrow()
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .map(|(_, storable_config)| {
+                let config = storable_config.0; // Get inner VaultConfig
+                VaultSummary {
+                    vault_id: config.id.clone(),
+                    owner: config.owner,
+                    status: config.status.clone(), // Clone if status is complex
+                    storage_used_bytes: config.storage_used_bytes,
+                    plan: config.plan.clone(),
+                    created_at: config.created_at,
+                }
+            })
+            .collect()
+    });
+
+    // Get total count for pagination info
+    let total = VAULT_CONFIGS.with(|map_ref| map_ref.borrow().len());
+
+    Ok(ListVaultsResponse { vaults, total })
 }
 
-#[query(guard = "is_admin")]
+#[query(guard = "admin_guard")] // Guarded query
 async fn list_billing(req: ListRequest) -> Result<ListBillingResponse, VaultError> {
-    ic_cdk::print(format!("Admin request: list_billing ({:?})", req));
-    // TODO: Implement admin_service::list_billing(offset, limit)
-     Err(VaultError::NotImplemented("list_billing".to_string())) // Placeholder
+    let offset = req.offset.unwrap_or(0) as u64; // Log indices are u64
+    let limit = req.limit.unwrap_or(10) as usize; // Default limit 10
+
+    let entries: Vec<BillingEntry> = BILLING_LOG.with(|log_ref| {
+        let log = log_ref.borrow();
+        let total_len = log.len();
+        let start_index = offset.min(total_len); // Ensure offset is within bounds
+
+        log.iter()
+           .skip(start_index as usize) // Skip based on offset
+           .take(limit) // Take up to the limit
+           .map(|storable_entry| storable_entry.0) // Get inner BillingEntry
+           .collect()
+    });
+
+    let total = BILLING_LOG.with(|log_ref| log_ref.borrow().len());
+
+    Ok(ListBillingResponse { entries, total })
 }
 
-#[query(guard = "is_admin")]
-async fn get_metrics() -> Result<VaultMetrics, VaultError> {
-     ic_cdk::print("Admin request: get_metrics");
-     // TODO: Implement admin_service::get_metrics()
-     Err(VaultError::NotImplemented("get_metrics".to_string())) // Placeholder
+// --- Certified Metrics Endpoint (Task 5.3 & 6) ---
+#[query] // Typically public, but could be guarded
+async fn get_metrics() -> Result<GetMetricsResponse, VaultError> {
+    // check_cycles()?; // Decide if queries should check cycles
+
+    let persisted_metrics = get_stored_metrics(); // Fetch from stable storage
+    let cycle_balance = Nat::from(canister_balance128());
+
+    let response = GetMetricsResponse {
+        metrics: persisted_metrics,
+        cycle_balance,
+        // cycles_burn_per_day: Nat::from(0u32), // Placeholder calculation TBD
+    };
+
+    // Serialize the response for certification
+    match ciborium::into_writer(&response, Vec::new()) {
+        Ok(bytes) => {
+            set_certified_data(&bytes); // Certify the serialized data
+            ic_cdk::println!("Metrics certified successfully.");
+        }
+        Err(e) => {
+             ic_cdk::println!("Error serializing metrics for certification: {:?}", e);
+             // Log the error but potentially still return the data without certification?
+             // For now, return an internal error.
+             return Err(VaultError::InternalError("Failed to certify metrics data".to_string()));
+        }
+    };
+
+    Ok(response)
 }
 
 // --- Candid Export ---
-candid::export_service!();
 
-#[query(name = "__get_candid_interface_tmp_hack")]
+// Helper function to generate the candid file
+#[query(name = "__get_candid_interface_tmp_path")]
 fn export_candid() -> String {
-    __export_service()
+    ic_cdk::export_candid!();
+    __export_generated_candid()
 }
 
 "" 

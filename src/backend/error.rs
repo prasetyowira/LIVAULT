@@ -44,4 +44,25 @@ pub enum VaultError {
 
     #[error("Canister cycle balance too low for operation")]
     CycleLow,
+
+    // Phase 5: Security & Guards specific
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
+
+    #[error("Caller is not the designated admin principal")]
+    AdminGuardFailed,
+
+    // Phase 6: Metrics & Admin APIs specific
+    #[error("Billing record not found")]
+    BillingRecordNotFound,
+
+    // Other potential errors
+    #[error("Invalid vault state for operation: {0}")]
+    InvalidState(String),
+
+    #[error("Member not found: {0}")]
+    MemberNotFound(String),
+
+    #[error("Checksum mismatch during upload finalization")]
+    ChecksumMismatch,
 } 
