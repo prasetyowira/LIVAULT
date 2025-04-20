@@ -40,15 +40,20 @@ It is imperative to avoid trying to accomplish several things in one go. Change 
    - Document plans and progress
    - Keep documentation updated
 
-Existing Code and Feature Tracking
-
-- See `project.md` for PRD document.
-- See section "Documentation Index" in `project.md` for `plans` and `architecture`
+# Project Rules
+- See `plans/prd.md` for PRD document.
+- See section "Core Modules" in `plans/readme.md` for index
+- See `plans/tech.docs.md` for technical aspect documentation
+- See `plans/backend.architecture.md` for backend architecture documentation
+- See `plans/frontend.architecture.md` for frontend architecture documentation
+- always see and use the Documentation for relevant topics, eg: developing rust canister should see @ICP Rust CDK
 - Clearly document existing codebase state
 
 ## Project Planning
 
-Active development plans and progress tracking are maintained in the `/plans` directory. This is a working area that evolves with the project, containing:
+Active development plans are in `plans/backend.plan.md` and `plans/frontend.plan.md`.
+and progress tracking are maintained file with pattern `*.tracking.md`. 
+This is a working area that evolves with the project, containing:
 - Current development plans
 - Debugging sessions
 - Progress tracking
