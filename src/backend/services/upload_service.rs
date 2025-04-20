@@ -119,7 +119,7 @@ fn update_vault_storage_usage(vault_id: &VaultId, bytes_added: u64) -> Result<()
 ///
 /// # Returns
 /// * `Result<UploadId, VaultError>` - The unique ID for this upload session.
-pub fn begin_chunked_upload(
+pub async fn begin_chunked_upload(
     vault_id: VaultId,
     file_meta: FileMeta,
     caller: PrincipalId,
@@ -155,7 +155,7 @@ pub fn begin_chunked_upload(
     let expected_chunks = (file_meta.size_bytes as usize + MAX_CHUNK_SIZE_BYTES - 1) / MAX_CHUNK_SIZE_BYTES;
 
     // 6. Create Upload State
-    let upload_id = generate_ulid();
+    let upload_id = generate_ulid().await;
     let current_time = time();
     let state = UploadState {
         vault_id: vault_id.clone(), // Clone vault_id here
@@ -262,7 +262,7 @@ pub fn upload_next_chunk(
 ///
 /// # Returns
 /// * `Result<ContentId, VaultError>` - The ID of the newly created content item or an error.
-pub fn finish_chunked_upload(
+pub async fn finish_chunked_upload(
     upload_id: &UploadId,
     sha256_checksum_hex: String,
 ) -> Result<ContentId, VaultError> {
@@ -306,7 +306,7 @@ pub fn finish_chunked_upload(
     }
 
     // 4. Create VaultContentItem
-    let content_id = generate_ulid();
+    let content_id = generate_ulid().await;
     let current_time = time();
     let content_item = VaultContentItem {
         content_id: content_id.clone(),

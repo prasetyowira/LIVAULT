@@ -319,7 +319,7 @@ async fn begin_upload(req: BeginUploadRequest) -> Result<UploadId, VaultError> {
     check_cycles()?;
     // Add authorization: Owner or member?
     // Add quota check
-    upload_service::begin_chunked_upload(&req.vault_id, req.file_meta, caller())
+    upload_service::begin_chunked_upload(&req.vault_id, req.file_meta, caller()).await
 }
 
 #[update]
@@ -336,7 +336,7 @@ async fn finish_upload(req: FinishUploadRequest) -> Result<ContentId, VaultError
     // rate_guard(caller())?;
     check_cycles()?;
     // Add authorization
-    upload_service::finish_chunked_upload(req.upload_id, &req.sha256_checksum_hex, caller())
+    upload_service::finish_chunked_upload(req.upload_id, &req.sha256_checksum_hex, caller()).await
 }
 
 // --- Content Download Endpoint ---

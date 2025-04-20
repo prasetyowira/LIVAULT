@@ -46,8 +46,8 @@ pub struct VaultUpdateData {
 ///
 /// # Returns
 /// * `Result<VaultId, VaultError>` - The ID of the newly created vault or an error.
-pub fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, VaultError> {
-    let vault_id = generate_ulid();
+pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, VaultError> {
+    let vault_id = generate_ulid().await;
     let current_time = time();
 
     // Calculate expires_at: 10 years from now (as per PRD)

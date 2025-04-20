@@ -53,7 +53,7 @@ pub async fn initialize_payment_session(
     req: PaymentInitRequest,
     caller: PrincipalId,
 ) -> Result<PaymentSession, VaultError> {
-    let session_id = generate_ulid();
+    let session_id = generate_ulid().await;
     let current_time = time();
     let expires_at = current_time + Duration::from_secs(PAYMENT_SESSION_TIMEOUT_SECONDS).as_nanos() as u64;
 

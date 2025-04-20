@@ -2,9 +2,11 @@
 use ic_stable_structures::{storable::Bound, Storable};
 use serde::{de::DeserializeOwned, Serialize};
 use std::borrow::Cow;
+use candid::Deserialize;
 
 /// Helper struct to wrap any type T that implements Serialize and DeserializeOwned
 /// to make it Storable using CBOR encoding.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
 pub struct Cbor<T>(pub T)
 where
     T: Serialize + DeserializeOwned;
