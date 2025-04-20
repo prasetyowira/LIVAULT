@@ -98,6 +98,24 @@
 
 ---
 
+## Phase 7 — ChainFusion Adapter & HTTP Outcalls (Day 6‑7)
+| # | Task | Deliverables | Notes |
+|---|------|--------------|-------|
+| 7.1 | Create `chainfusion_adapter/` canister crate | `Cargo.toml`, `lib.rs` | Separate canister to isolate HTTPS outcalls |
+| 7.2 | Implement `swap_token` & candid types | `adapter/api.rs` | Strict timeouts, circuit‑breaker |
+| 7.3 | Integrate adapter into Payment flow | Updated `PaymentService` | Feature‑flag: `chainfusion` |
+| 7.4 | Manual validation with mocked CF API | Local mock server + steps | Skip automated assertions |
+| 7.5 | Extend Billing models for multi‑token | `models/billing.rs` | Stores original token, swap hash |
+
+---
+
+## Phase 8 — Deployment & Ops Automation (Day 7)
+| Task | Deliverables | Notes |
+|------|-------------|-------|
+| dfx workspace config | `dfx.json` with prod & local networks | Env‑driven canister IDs |
+
+---
+
 ## Milestone Timeline
 1. Day 0 – Scaffold repo & CI
 2. Day 1 – Dependencies compile (wasm32) + initial models
@@ -114,24 +132,6 @@
 | Level | Method | Responsible |
 |-------|--------|-------------|
 | Manual QA | Step‑by‑step checklists | QA & Dev |
-
----
-
-## Phase 7 — ChainFusion Adapter & HTTP Outcalls (Day 6‑7)
-| # | Task | Deliverables | Notes |
-|---|------|--------------|-------|
-| 7.1 | Create `chainfusion_adapter/` canister crate | `Cargo.toml`, `lib.rs` | Separate canister to isolate HTTPS outcalls |
-| 7.2 | Implement `swap_token` & candid types | `adapter/api.rs` | Strict timeouts, circuit‑breaker |
-| 7.3 | Integrate adapter into Payment flow | Updated `PaymentService` | Feature‑flag: `chainfusion` |
-| 7.4 | Manual validation with mocked CF API | Local mock server + steps | Skip automated assertions |
-| 7.5 | Extend Billing models for multi‑token | `models/billing.rs` | Stores original token, swap hash |
-
----
-
-## Phase 8 — Deployment & Ops Automation (Day 7)
-| Task | Deliverables | Notes |
-|------|-------------|-------|
-| dfx workspace config | `dfx.json` with prod & local networks | Env‑driven canister IDs |
 
 ---
 
