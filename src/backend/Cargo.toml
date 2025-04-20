@@ -1,0 +1,33 @@
+[package]
+name = "livault_backend"
+version = "0.1.0"
+edition = "2021" # Although plan mentions 2024, stick to 2021 for broader wasm32 stability unless specific 2024 features are needed later.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+candid = "0.10.7"
+ic-cdk = "0.17.1"
+ic-cdk-macros = "0.17.1" # Needed for macros like query/update
+ic-stable-structures = "0.6.8"
+ic-cbor = "3.0.3"
+ic-cdk-timers = "0.11.0" # From plan's target stack
+ic-utils = "0.40.0" # Explicitly requested version
+serde = { version = "1", features = ["derive"] }
+serde_bytes = "0.11" # Explicitly requested version
+thiserror = "1.0" # Common error handling library
+
+# Dependencies needed based on architecture/tech docs
+ulid = { version = "1.2.2", features = ["serde"] } # For ULIDs mentioned in architecture
+aes-gcm = "0.10.3" # For encryption mentioned in tech docs
+sha2 = "0.10.8" # For checksums mentioned in tech docs
+rand = "0.8.5" # For randomness mentioned in tech docs
+shamir-secret-sharing = "0.3.1" # For Shamir shares mentioned in tech docs
+
+[dev-dependencies]
+# Add testing dependencies later if needed
+
+[profile.release]
+lto = true
+opt-level = 'z' # Optimize for size 

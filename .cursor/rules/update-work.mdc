@@ -1,7 +1,7 @@
 ---
-description: This rule will be run at the end of a session to update documentation
+description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 When called, you should review all the progress and enhancements in [progress.md](mdc:docs/progress.md) and do the following tasks:
 
