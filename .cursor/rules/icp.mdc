@@ -1,0 +1,72 @@
+---
+description: 
+globs: *.rs,Cargo.toml
+alwaysApply: false
+---
+---
+name: icp.mdc
+description: Quick reference for working with cursors on the Internet Computer (ICP) in Rust
+---
+
+# 🌀 ICP Cursor Cheatsheet (Rust)
+
+## 📘 Overview
+Cursors in Internet Computer (ICP) canisters are commonly used to manage **pagination**, **streaming**, or **incremental state tracking**—especially in storage-heavy applications (e.g., lists, logs, or batch processing).
+
+This guide provides a reference for implementing cursors in Rust-based ICP canisters.
+
+---
+
+## Rules:
+
+- all code must able to compiled on 'wasm32-unknown-unknown` runtime
+- all added or suggested library must able to compiled on 'wasm32-unknown-unknown` runtime
+- use latest version of library if possible
+
+---
+
+## Project Layout
+- Base src directory: `src/`
+- Base Backend (Rust) source code directory: `src/backend`
+- Base Frontend source code directory: `src/frontend`
+
+---
+
+## 💾 Stable Memory & Cursor Persistence
+
+If you're working with stable structures (e.g., `ic-stable-structures`), store cursor progress in `StableCell`:
+
+```rust
+thread_local! {
+    static CURSOR_POS: RefCell<StableCell<u64, Memory>> = RefCell::new(
+        StableCell::init(MEMORY.with(|m| m.borrow().get(MemoryId::new(0))), 0).unwrap()
+    );
+}
+
+#[update]
+fn update_cursor(pos: u64) {
+    CURSOR_POS.with(|c| c.borrow_mut().set(pos).unwrap());
+}
+```
+
+---
+
+## ⚡ Best Practices
+
+- 🔁 Use `Option<u64>` for cursors to support "start from beginning" behavior.
+- 🧹 Use `.last().map(|x| x.id + 1)` to generate the next cursor cleanly.
+- 📦 For large datasets, combine with `ic-stable-structures` to persist across upgrades.
+- 📜 For streaming responses, use cursors to implement `StreamingCallback` pattern.
+
+---
+
+## 📚 Related Topics
+
+- [ic-stable-structures](mdc:https:/docs.rs/ic-stable-structures/latest/ic_stable_structures)
+- [DFINITY Developer Docs](mdc:https:/internetcomputer.org/docs/current)
+
+---
+
+_Updated: 16-April-2025_
+
+---

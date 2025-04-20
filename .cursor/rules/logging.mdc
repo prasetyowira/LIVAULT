@@ -1,0 +1,106 @@
+---
+description: Creating and editing log messages
+globs: *.js*,*.log*,*.ts,*.rs
+alwaysApply: false
+---
+
+# Logging Guidelines for the Frontend
+- Use `console.log()` only for **debugging and error reporting**.
+- Remove or disable all development logs before production deployment.
+
+# Logging Guidelines for the Rust
+
+## 🎯 Purpose
+Effective logging is essential for debugging, observability, and tracing execution flow in ICP canisters—especially since you can’t attach a debugger or inspect memory post-deploy.
+
+---
+
+## 🧱 Use `ic-cdk::print` for Logging
+
+The Internet Computer doesn't support standard `println!` or `log` macros. Instead, use:
+
+```rust
+use ic_cdk::print;
+
+print!("Log something");
+```
+
+- ✅ Output goes to **stdout**
+- ✅ Appears in `dfx canister call` responses (local dev)
+- ✅ Visible in logs via DFX or NNS Monitoring Tools
+
+---
+
+## 📌 Pattern for Debug Logging
+
+```rust
+pub fn log_request(method: &str, caller: Principal) {
+    ic_cdk::print(format!("[{}] Called by {}", method, caller));
+}
+```
+
+Usage:
+
+```rust
+#[update]
+fn do_something() {
+    log_request("do_something", ic_cdk::caller());
+    // logic...
+}
+```
+
+---
+
+## ⚠️ Logging Warnings & Errors
+
+```rust
+fn log_warning(msg: &str) {
+    ic_cdk::print(format!("⚠️ WARNING: {}", msg));
+}
+
+fn log_error(err: &str) {
+    ic_cdk::print(format!("❌ ERROR: {}", err));
+}
+```
+
+---
+
+## 🔐 Don’t Log Sensitive Data
+- ❌ Passwords, tokens, private keys
+- ❌ Full user input
+- ✅ Log metadata, execution flow, non-sensitive payloads
+
+---
+
+## ✅ Recommended Tags / Patterns
+- `🔍 TRACE:` for fine-grained logic
+- `📝 INFO:` for user actions
+- `⚠️ WARNING:` for potential issues
+- `❌ ERROR:` for real failures
+
+```rust
+ic_cdk::print("📝 INFO: Processing payment event #123");
+```
+
+---
+
+## 🛠️ Dev Mode vs Prod
+- In dev: log as much as possible (trace, debug, values)
+- In prod: consider rate-limiting or conditionally enabling logs
+
+```rust
+#[cfg(debug_assertions)]
+ic_cdk::print("🔍 TRACE: Dev-only detailed log");
+```
+
+---
+
+## 📚 Related
+- [ic-cdk crate](mdc:https:/docs.rs/ic-cdk/latest/ic_cdk/fn.print.html)
+- [DFINITY Observability](mdc:https:/internetcomputer.org/docs/current/developer-docs/production/canister-logging)
+
+---
+
+_Updated: 16-April-2025_
+
+---

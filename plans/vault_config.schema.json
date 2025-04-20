@@ -1,0 +1,123 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "VaultConfig",
+    "type": "object",
+    "properties": {
+      "vault_id": {"type": "string"},
+      "name": {"type": "string"},
+      "owner_principal": {"type": "string"},
+      "created_at": {"type": "integer"},
+      "expires_at": {"type": "integer"},
+      "status": {
+        "type": "string",
+        "enum": ["DRAFT","NEED_SETUP","SETUP_COMPLETE","ACTIVE","GRACE_MASTER","GRACE_HEIR","UNLOCKABLE","EXPIRED","DELETED"]
+      },
+      "plan": {
+        "type": "object",
+        "properties": {
+          "storage_limit_mb": {"type": "integer"},
+          "max_heir": {"type": "integer"},
+          "max_witness": {"type": "integer"},
+          "pricing_token": {"type": "string"},
+          "paid_amount": {"type": "number"}
+        },
+        "required": ["storage_limit_mb","max_heir","max_witness","pricing_token","paid_amount"],
+        "additionalProperties": false
+      },
+      "unlock_rules": {
+        "type": "object",
+        "properties": {
+          "unlock_after_timestamp": {"type": "integer"},
+          "inactivity_days": {"type": "integer"},
+          "required_approvals": {
+            "type": "object",
+            "properties": {
+              "heir": {"type": "integer"},
+              "witness": {"type": "integer"}
+            },
+            "required": ["heir","witness"],
+            "additionalProperties": false
+          },
+          "recovery_qr": {
+            "type": "object",
+            "properties": {
+              "enabled": {"type": "boolean"},
+              "bypass_threshold": {"type": "boolean"},
+              "valid_if_no_heir_or_witness": {"type": "boolean"}
+            },
+            "required": ["enabled","bypass_threshold","valid_if_no_heir_or_witness"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["unlock_after_timestamp","inactivity_days","required_approvals","recovery_qr"],
+        "additionalProperties": false
+      },
+      "members": {
+        "type": "object",
+        "properties": {
+          "heirs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "relation": {"type": "string"},
+                "status": {"type": "string"},
+                "token_expiry": {"type": "integer"}
+              },
+              "required": ["id","name","relation","status"],
+              "additionalProperties": false
+            }
+          },
+          "witnesses": {
+            "$comment": "max_witness = 1",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {"type": "string"},
+                "name": {"type": "string"},
+                "status": {"type": "string"},
+                "can_trigger_unlock": {"type": "boolean"},
+                "count_as_approver": {"type": "boolean"}
+              },
+              "required": ["id","name","status","can_trigger_unlock","count_as_approver"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["heirs","witnesses"],
+        "additionalProperties": false
+      },
+      "content": {
+        "type": "object",
+        "properties": {
+          "types": {"type": "array","items":{"type":"string"}},
+          "file_extensions_allowed": {"type": "array","items":{"type":"string"}}
+        },
+        "required": ["types","file_extensions_allowed"],
+        "additionalProperties": false
+      },
+      "post_unlock": {
+        "type": "object",
+        "properties": {
+          "access_until": {"type": "integer"},
+          "daily_access_limit": {"type": "integer"}
+        },
+        "required": ["access_until","daily_access_limit"],
+        "additionalProperties": false
+      },
+      "audit": {
+        "type": "object",
+        "properties": {
+          "logging_enabled": {"type": "boolean"},
+          "log_retention_days": {"type": "integer"}
+        },
+        "required": ["logging_enabled","log_retention_days"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["vault_id","name","owner_principal","created_at","expires_at","status","plan","unlock_rules","members","content","post_unlock","audit"],
+    "additionalProperties": false
+  }

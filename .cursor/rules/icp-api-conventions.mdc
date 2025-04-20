@@ -1,0 +1,114 @@
+---
+description: Best practices and naming conventions for API development in Rust-based Internet Computer (ICP) canisters
+globs: *.rs,Cargo.toml
+alwaysApply: false
+---
+---
+name: icp-api-conventions.mdc
+description: Quick reference and best practices for writing APIs in Rust for ICP canisters
+---
+
+# 🧭 ICP API Development Conventions (Rust)
+
+## 📘 Overview
+This reference outlines API conventions and best practices when building Rust-based canisters on the Internet Computer Protocol (ICP). It includes naming conventions, endpoint design, logging, and error handling tailored for `wasm32-unknown-unknown`.
+
+---
+
+## Rules:
+
+- All code must compile for the `wasm32-unknown-unknown` target.
+- All libraries must support deterministic builds and work in `no_std`-style environments.
+- Use latest library versions where possible.
+
+---
+
+## 🏷️ API Design Conventions
+
+- 🔁 Prefer **RPC-style names** for functions: `get_xyz`, `list_xyz`, `create_xyz`, `update_xyz`, `delete_xyz`
+- 📦 Always use `struct` for request payloads to improve readability and candid compatibility
+- ❗ Separate `#[query]` and `#[update]` appropriately:
+  - `#[query]` for **read-only** ops
+  - `#[update]` for **state-changing** ops
+
+```rust
+#[derive(CandidType, Deserialize)]
+pub struct CreateUserRequest {
+    pub username: String,
+    pub email: String,
+}
+
+#[update]
+fn create_user(req: CreateUserRequest) -> Result<(), String> {
+    ...
+}
+```
+
+---
+
+## 📦 Payload & Argument Rules
+
+- ✅ Use explicit structs for arguments with more than one field
+- 🚫 Avoid multiple primitives in signatures like `fn create(a: String, b: String)`
+- ✅ Always derive `CandidType` and `Deserialize` for payload structs
+
+---
+
+## 🧪 Error Handling
+
+- ✅ Use `Result<T, String>` for all fallible endpoints
+- ❗ Avoid panic/unwrap in canister logic (use `.map_err` or `?` with context)
+
+```rust
+#[update]
+fn delete_user(id: String) -> Result<(), String> {
+    USERS.with(|users| {
+        users.borrow_mut()
+            .remove(&id)
+            .map(|_| ())
+            .ok_or("User not found".into())
+    })
+}
+```
+
+---
+
+## 🧹 Logging & Observability
+
+- Use `ic_cdk::print()` for all logs (not `println!`)
+- Don’t log sensitive data
+- ✅ Tag logs with emojis for readability (INFO, ERROR, WARN)
+
+```rust
+ic_cdk::print("📝 INFO: create_user called by principal XYZ");
+ic_cdk::print("❌ ERROR: user not found");
+```
+
+---
+
+## 🧩 Structure & Modularity
+
+Follow user tech.docs or guidelines, if not have any then follow this structure below:
+
+- `lib.rs` → Main entry point, module declarations
+- `error.rs` → Error handling
+- `api.rs` → endpoint definitions
+- `service.rs` → core logic
+- `models.rs` → structs/enums
+- `storage.rs` → stable memory + helpers to interact with it (like repository layer)
+- `utils.rs` → Helper functions
+- `auth.rs` → Authentication and authorization
+
+---
+
+## 📚 Related Topics
+
+- [ic-cdk](mdc:https:/docs.rs/ic-cdk)
+- [candid](mdc:https:/docs.rs/candid)
+- [DFINITY Rust SDK Docs](mdc:https:/internetcomputer.org/docs/current/developer-docs/backend/rust)
+
+---
+
+_Updated: 16-April-2025_
+
+---

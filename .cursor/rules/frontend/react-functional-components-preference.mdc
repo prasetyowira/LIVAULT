@@ -1,0 +1,7 @@
+---
+description: This rule enforces the use of functional components with hooks in React components within the src/components directory.
+globs: src/frontend/src/components/**/*.tsx
+alwaysApply: false
+---
+- Always use functional components with hooks instead of class components.
+- Use React.FC for functional components with props.

@@ -1,0 +1,50 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "VaultInviteToken",
+    "type": "object",
+    "properties": {
+      "token_id": {"type": "string"},
+      "vault_id": {"type": "string"},
+      "role": {"type": "string","enum":["heir","witness"]},
+      "token": {"type": "string"},
+      "created_at": {"type": "integer"},
+      "expires_at": {"type": "integer"},
+      "status": {"type": "string","enum":["active","claimed","expired","revoked"]},
+      "invited_by": {"type": "string"},
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "invited_name": {"type": "string"},
+          "relation_to_owner": {
+            "type": "string",
+            "enum": ["spouse","son","daughter","father","mother","brother","sister","friend","lawyer","notary","other"]
+          },
+          "email_hint": {"type": "string"}
+        },
+        "required": ["invited_name","relation_to_owner","email_hint"],
+        "additionalProperties": false
+      },
+      "claim_info": {
+        "type": "object",
+        "properties": {
+          "claimed_by_principal": {"type": ["string","null"]},
+          "claimed_at": {"type": ["integer","null"]},
+          "device_info": {"type": ["string","null"]}
+        },
+        "required": ["claimed_by_principal","claimed_at","device_info"],
+        "additionalProperties": false
+      },
+      "security": {
+        "type": "object",
+        "properties": {
+          "passphrase_required": {"type": "boolean"},
+          "shamir_share_index": {"type": "integer"},
+          "recovery_qr_included": {"type": "boolean"}
+        },
+        "required": ["passphrase_required","shamir_share_index","recovery_qr_included"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["token_id","vault_id","role","token","created_at","expires_at","status","invited_by","metadata","claim_info","security"],
+    "additionalProperties": false
+  }

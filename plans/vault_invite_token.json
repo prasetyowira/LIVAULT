@@ -1,0 +1,31 @@
+{
+    "token_id": "token-heir-2389aabb",
+    "vault_id": "vault-983f4a91e1",
+    "role": "heir", // or "witness"
+  
+    "token": "6fc8b3e4-0912-4379-bf1c-93be7fd4d5cf",
+    "created_at": 1713238000,
+    "expires_at": 1713324400,
+  
+    "status": "active", // "claimed", "expired", "revoked"
+  
+    "invited_by": "aaaaa-aa", // Master user's principal
+  
+    "metadata": {
+      "invited_name": "Putri Wira",
+      "relation_to_owner": "daughter",  // enum
+      "email_hint": "putri@example.com"
+    },
+  
+    "claim_info": {
+      "claimed_by_principal": null,
+      "claimed_at": null,
+      "device_info": null // optional for logging
+    },
+  
+    "security": {
+      "passphrase_required": true,
+      "shamir_share_index": 2,
+      "recovery_qr_included": true
+    }
+  }

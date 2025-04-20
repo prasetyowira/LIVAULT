@@ -1,0 +1,13 @@
+{
+    "id": "content-001",
+    "type": "file",
+    "title": "Birth Certificate Scan",
+    "created_at": 1713456000,
+    "updated_at": 1713456000,
+    "file_meta": {
+      "filename": "birth_cert.pdf",
+      "size_bytes": 324000,
+      "mime_type": "application/pdf",
+      "checksum": "6a7bfa31258b31b5ee..."
+    }
+  }

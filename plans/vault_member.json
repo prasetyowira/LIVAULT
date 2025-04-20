@@ -1,0 +1,38 @@
+{
+    "member_id": "heir-1",
+    "vault_id": "vault-983f4a91e1",
+    "role": "heir",  // or "witness"
+    "principal_id": "w7x7r-cok77-aaaaa-aaaaa-cai",  
+    "name": "Putri Wira",
+    "relation_to_owner": "anak",  
+  
+    "status": "active", // "invited", "expired", "revoked"
+    "token_claimed_at": 1713310000,
+    "token_expires_at": 1713323600,
+  
+    "passphrase_set": true,
+    "recovery_qr_issued": true,
+    "shamir_share_id": "share-3a7f92c1",
+  
+    "approval": {
+      "can_approve": true,
+      "has_approved": false,
+      "approved_at": null
+    },
+  
+    "access": {
+      "unlock_attempts_today": 0,
+      "last_access_at": null
+    },
+  
+    "audit_log": [
+      {
+        "action": "claimed_invite",
+        "timestamp": 1713310010
+      },
+      {
+        "action": "set_passphrase",
+        "timestamp": 1713310020
+      }
+    ]
+  }

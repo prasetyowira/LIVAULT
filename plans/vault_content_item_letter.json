@@ -1,0 +1,11 @@
+{
+    "id": "content-003",
+    "type": "letter",
+    "title": "Final Letter to My Daughter",
+    "created_at": 1713456200,
+    "updated_at": 1713456200,
+    "letter": {
+      "to": ["Putri", "Son"],
+      "message": "My dear daughter, I hope this vault brings clarity and peace..."
+    }
+  }

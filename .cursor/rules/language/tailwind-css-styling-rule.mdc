@@ -1,0 +1,12 @@
+---
+description: Apply Tailwind CSS styling conventions in all relevant files.
+globs: **/*.tsx,**/*.css
+---
+- You are an expert in Tailwind.
+- use tailwinds 3.4.10 for reference
+- UI and Styling: Use Tailwind CSS for consistent UI styling.
+- Use Tailwind utility classes extensively in your templates
+- Leverage Tailwind's responsive design utilities
+- Utilize Tailwind's color palette and spacing scale
+- Implement custom theme extensions when necessary
+- Never use @apply directive in production

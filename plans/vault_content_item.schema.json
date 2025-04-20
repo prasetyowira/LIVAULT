@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VaultContentItem",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": ["file", "password", "letter"]
+    },
+    "title": { "type": "string" },
+    "created_at": { "type": "integer" },
+    "updated_at": { "type": "integer" },
+
+    "file_meta": {
+      "type": "object",
+      "properties": {
+        "filename": { "type": "string" },
+        "size_bytes": { "type": "integer" },
+        "mime_type": { "type": "string" },
+        "checksum": { "type": "string", "comment": "SHA256" } 
+      },
+      "required": ["filename", "size_bytes", "mime_type", "checksum"]
+    },
+
+    "password_entry": {
+      "type": "object",
+      "properties": {
+        "label": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "required": ["label", "password"]
+    },
+
+    "letter": {
+      "type": "object",
+      "properties": {
+        "to": { 
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "message": { "type": "string" }
+      },
+      "required": ["message"]
+    }
+  },
+  "required": ["id", "type", "created_at"],
+  "additionalProperties": false
+}

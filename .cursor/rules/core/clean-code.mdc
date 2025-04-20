@@ -1,0 +1,63 @@
+---
+description: Guidelines for writing clean, maintainable, and human-readable code. Apply these rules when writing or reviewing code to ensure consistency and quality.
+globs: 
+---
+# Clean Code Guidelines
+
+## Constants Over Magic Numbers
+- Replace hard-coded values with named constants
+- Use descriptive constant names that explain the value's purpose
+- Keep constants at the top of the file or in a dedicated constants file
+
+## Meaningful Names
+- Variables, functions, and classes should reveal their purpose
+- Names should explain why something exists and how it's used
+- Avoid abbreviations unless they're universally understood
+
+## Smart Comments
+- Don't comment on what the code does - make the code self-documenting
+- Use comments to explain why something is done a certain way
+- Document APIs, complex algorithms, and non-obvious side effects
+
+## Single Responsibility
+- Each function should do exactly one thing
+- Functions should be small and focused
+- If a function needs a comment to explain what it does, it should be split
+
+## DRY (Don't Repeat Yourself)
+- Extract repeated code into reusable functions
+- Share common logic through proper abstraction
+- Maintain single sources of truth
+
+## KISS (Keep It Simple, Stupid | Keep It Short and Simple)
+- Simplicity: Prioritize simplicity in design and development. Avoid unnecessary complexity, abstraction, or over-engineering.
+- Clarity: Simple designs are usually easier to understand and maintain. They reduce ambiguity and make it easier for others to comprehend the system or product.
+- Efficiency: Simpler solutions often require fewer resources (such as time, effort, and code) to implement and maintain. They can lead to faster development cycles and lower costs.
+- Usability: Simple designs tend to result in better user experiences. Products or interfaces that are intuitive and easy to use are more likely to be adopted and appreciated by users.
+- Flexibility: Simple designs are often more adaptable to changes and future requirements. They can be easier to modify or extend without introducing unnecessary complications.
+- Risk Reduction: Complexity can introduce risks such as bugs, performance issues, and maintenance challenges. Simplifying designs can help mitigate these risks by reducing the likelihood of errors and making it easier to address issues when they arise.
+
+## Clean Structure
+- Keep related code together
+- Organize code in a logical hierarchy
+- Use consistent file and folder naming conventions
+
+## Encapsulation
+- Hide implementation details
+- Expose clear interfaces
+- Move nested conditionals into well-named functions
+
+## Code Quality Maintenance
+- Refactor continuously
+- Fix technical debt early
+- Leave code cleaner than you found it
+
+## Testing
+- Write tests before fixing bugs
+- Keep tests readable and maintainable
+- Test edge cases and error conditions
+
+## Version Control
+- Write clear commit messages
+- Make small, focused commits
+- Use meaningful branch names 

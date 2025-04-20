@@ -1,0 +1,72 @@
+{
+    "vault_id": "vault-983f4a91e1",  
+    "name": "Legacy Vault for My Family",
+    "owner_principal": "aaaaa-aa",  
+    "created_at": 1713237200,
+    "expires_at": 2028745200, 
+    "status": "active",
+  
+    "plan": {
+      "storage_limit_mb": 10,
+      "max_heir": 3,
+      "max_witness": 1,
+      "pricing_token": "ICP",
+      "paid_amount": 1.5
+    },
+  
+    "unlock_rules": {
+      "unlock_after_timestamp": 2027986800,
+      "inactivity_days": 180,
+      "required_approvals": {
+        "heir": 2,
+        "witness": 1
+      },
+      "recovery_qr": {
+        "enabled": true,
+        "bypass_threshold": true,
+        "valid_if_no_heir_or_witness": true
+      }
+    },
+  
+    "members": {
+      "heirs": [
+        {
+          "id": "heir-1",
+          "name": "Putri Wira",
+          "relation": "anak",
+          "status": "invited",
+          "token_expiry": 1713323600
+        },
+        {
+          "id": "heir-2",
+          "name": "Wahyu",
+          "relation": "adik",
+          "status": "active"
+        }
+      ],
+      "witnesses": [
+        {
+          "id": "witness-1",
+          "name": "Notaris Adi",
+          "status": "active",
+          "can_trigger_unlock": true,
+          "count_as_approver": true
+        }
+      ]
+    },
+  
+    "content": {
+      "types": ["file", "password", "letter"],
+      "file_extensions_allowed": [".pdf", ".txt", ".docx", ".xlsx", ".jpg", ".png"]
+    },
+  
+    "post_unlock": {
+      "access_until": 2028697200,
+      "daily_access_limit": 3
+    },
+  
+    "audit": {
+      "logging_enabled": true,
+      "log_retention_days": 365
+    }
+  }

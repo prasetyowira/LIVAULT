@@ -1,0 +1,5 @@
+---
+description: Recommends Redux DevTools for debugging Redux applications.
+globs: src/frontend/src/store/*.ts,src/frontend/src/api/**/*.ts
+---
+- Use Redux DevTools for debugging.
