@@ -1,12 +1,12 @@
 # Backend TODO List
 
-*Generated: 2024-07-25*
+*Generated: 2024-07-26*
 
 This list compiles outstanding tasks, identified inconsistencies needing resolution, and areas requiring further implementation based on a review of backend documentation, plans, progress logs, and codebase structure.
 
 ## Phase 1: Core Models & Storage
 -   **[ ] Task 1.3:** Perform manual validation of model serialization/deserialization and storage round-trip. (`backend.tracking.md` status needs clarification).
--   **[ ] Storage Implementation:** Ensure `src/backend/storage/structures.rs` implements all required stable memory segments as defined in `backend.architecture.md` (Section 4), including maps for Approvals, Audit Logs, Metrics, and Upload Staging.
+-   **[ ] Storage Implementation:** Ensure `src/backend/storage/structures.rs` implements all required stable memory segments as defined in `backend.architecture.md` (Section 4), including maps for Approvals, Audit Logs, Metrics, and Upload Staging. (Metrics is done).
 -   **[ ] Documentation:** Update `tech.docs.md` (Section 5) storage description to align with `backend.architecture.md`.
 
 ## Phase 2: Services Layer
@@ -16,6 +16,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   Implement logic to fetch related data where needed (e.g., members for Shamir index calculation).
     *   Implement storage usage tracking and updates.
     *   Flesh out detailed authorization logic beyond basic owner checks.
+    *   Implement function to be called by `PaymentService` to update vault status post-payment.
 -   **[ ] `InviteService`:**
     *   Implement actual Shamir index assignment logic (fetching used indices).
     *   Implement calculation of token expiry dates accurately.
@@ -29,40 +30,42 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 
 ## Phase 3: Candid API & Entry Points
 -   **[ ] Task 3.4:** Perform manual happy-path verification of API endpoints using `dfx`.
--   **[ ] API Definition:** Ensure `api.rs` fully implements the Candid interface defined in `backend.architecture.md` (Section 6), including missing endpoints (`request_download`, `list_vaults`, `list_billing`) and detailed request/response types. (Admin endpoints added in Phase 6)
+-   **[ ] API Definition:** Ensure `api.rs` fully implements the Candid interface defined in `backend.architecture.md` (Section 6), including missing endpoints (`request_download`) and detailed request/response types.
 -   **[ ] Documentation:** Update or remove the Candid stub in `tech.docs.md` (Section 3) to align with `backend.architecture.md`.
 -   **[ ] Authorization:** Implement detailed authorization logic within API endpoints beyond basic owner checks.
 
-## Phase 4: Payment Adapter
+## Phase 4: Payment Adapter - Partially Completed (Phase 7 extended)
 -   **[ ] Task 4.3:** Perform manual end-to-end testing of the ICP Direct payment flow stub.
--   **[ ] Ledger Interaction:** Implement actual ICP ledger query logic in `verify_icp_payment` using appropriate crates/methods (replace placeholder).
+-   **[ ] Ledger Interaction:** Implement actual ICP ledger query logic in `verify_icp_ledger_payment` using appropriate crates/methods (replace placeholder).
 -   **[ ] Pay-to Principal:** Implement secure derivation of a unique subaccount/principal per payment session in `initialize_payment_session` (replace placeholder using `caller`).
--   **[ ] ChainFusion:** Implement ChainFusion payment flow (Phase 7 task, but core to payment functionality).
 
 ## Phase 5: Security & Guards - COMPLETED (2024-07-25)
--   **[X] Task 5.1:** Implement comprehensive input validation in the API layer and detailed error mapping in `error.rs`.
--   **[X] Task 5.2:** Implement the `cycle_guard` logic.
--   **[X] Task 5.3:** Implement certified data tree for `get_metrics`.
--   **[X] Task 5.4:** Implement static analysis/guards (panic guard implemented; build check is CI task).
 
 ## Phase 6: Metrics & Admin APIs - COMPLETED (2024-07-25)
--   **[X] Task:** Implement `metrics.rs`, `get_metrics`, `list_vaults`, `list_billing` endpoints and underlying logic.
 
-## Phase 7: ChainFusion Adapter & HTTP Outcalls
--   **[ ] Task:** Implement the separate `chainfusion_adapter` canister and integrate it into the payment flow.
+## Phase 7: ChainFusion Adapter & HTTP Outcalls - COMPLETED (2024-07-26)
+-   **[X] Task 7.1:** Implement swap_token & candid types (Placeholder HTTP logic added). 
+-   **[X] Task 7.2:** Integrate adapter into Payment flow.
+-   **[ ] Task 7.3:** Perform manual validation with mocked CF API.
+-   **[X] Task 7.4:** Extend Billing models for multi‑token.
+-   **[ ] Task:** Implement actual HTTP outcalls in `adapter/chainfusion_adapter.rs` (replace TODOs).
+-   **[ ] Task:** Implement robust ICP transaction verification after ChainFusion completion in `payment_service.rs` (replace placeholder).
+-   **[ ] Task:** Configure actual `CHAINFUSION_API_URL` in `adapter/chainfusion_adapter.rs`.
 
-## Phase 8: Deployment & Ops Automation
--   **[ ] Task:** Create `dfx.json` configuration.
+## Phase 8: Deployment & Ops Automation - COMPLETED (2024-07-26)
+-   **[X] Task 8.1:** Create `dfx.json` configuration.
 -   **[ ] Task:** Implement CI/CD pipeline steps for deployment and cycle top-up (as per `tech.docs.md`).
 
-## General / Documentation
--   **[ ] Dependencies:** Update `backend.plan.md` dependency list to match `Cargo.toml`. Add `ic-utils`, `ic-cdk-timers` explicitly if needed.
+## General / Integration
+-   **[ ] Billing Integration:** Implement logic in `PaymentService` to call `storage::billing::add_billing_entry` upon successful payment verification.
+-   **[ ] Vault Status Integration:** Implement logic in `PaymentService` to call `VaultService` to update vault status upon successful payment verification.
+-   **[ ] Dependencies:** Update `backend.plan.md` dependency list to match `Cargo.toml`.
 -   **[ ] Vault Lifecycle:** Ensure `VaultStatus` enum reflects PRD states and transition logic is correct.
 -   **[ ] Review Open Questions:** Address the open questions listed in `backend.plan.md`.
--   **[ ] Update Progress:** Regularly update `docs/progress.md` and `backend.tracking.md` as tasks are completed. (Done for P5/P6)
+-   **[ ] Update Progress:** Regularly update `docs/progress.md` and `backend.tracking.md` as tasks are completed. (Done for P5/P6/P7/P8)
 
 ## Code TODO
--   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase.
+-   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase (review files like `services/*`, `adapter/*`, `api.rs`, `utils/*`).
     *   `services/vault_service.rs`: Calculate `expires_at` based on plan (e.g., 10 years).
     *   `services/vault_service.rs`: Determine `storage_quota_bytes` based on plan.
     *   `services/vault_service.rs`: Add logic to update unlock conditions, plan (handle prorate).

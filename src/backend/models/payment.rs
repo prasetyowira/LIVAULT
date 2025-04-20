@@ -6,6 +6,8 @@ use candid::{CandidType, Deserialize, Nat};
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use ic_stable_structures::{storable::Bound, Storable};
+use std::borrow::Cow;
 
 pub type SessionId = String;
 pub type E8s = u64; // Amount in 10^-8 ICP
@@ -19,30 +21,36 @@ pub enum PayMethod {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum PayState {
     Issued,    // Session created, waiting for payment
-    Confirmed, // Payment verified on ledger
-    Processing, // ChainFusion swap in progress (future)
-    Closed,    // Vault created successfully using this payment
-    Expired,   // Timeout reached without payment confirmation
+    Pending,   // Payment detected (e.g., CF swap processing), waiting for confirmation
+    Confirmed, // Payment verified on ledger/CF
+    Closed,    // Vault created successfully after confirmation
+    Expired,   // Session timed out before confirmation
     Error,     // An error occurred during processing
 }
+
+impl Default for PayMethod { fn default() -> Self { PayMethod::IcpDirect } }
+impl Default for PayState { fn default() -> Self { PayState::Issued } }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct PaymentSession {
     pub session_id: SessionId,       // ULID
-    pub pay_to_principal: PrincipalId, // Temp sub-account for payment
-    pub amount_e8s: E8s,
-    pub vault_plan: String,        // Plan associated with this payment
+    pub pay_to_account_id: String,   // ICP AccountIdentifier (derived from this canister + subaccount)
+    pub amount_e8s: E8s,             // Amount expected in ICP e8s
+    pub vault_plan: String,           // e.g., "Standard", "Premium"
     pub method: PayMethod,
     pub state: PayState,
-    pub created_at: Timestamp,
-    pub expires_at: Timestamp,      // e.g., 30 minutes from creation
-    pub verified_at: Option<Timestamp>,
-    pub closed_at: Option<Timestamp>,
-    pub error_message: Option<String>,
-    // Fields for ChainFusion (deferred)
-    // pub swap_address: Option<String>,
-    // pub token_symbol: Option<String>,
-    // pub original_token_amount: Option<String>,
+    pub initiating_principal: PrincipalId, // Who started the payment process
+    pub created_at: Timestamp,          // Nanoseconds since epoch
+    pub expires_at: Timestamp,          // Nanoseconds since epoch when the session expires
+    pub verified_at: Option<Timestamp>,  // When payment was confirmed
+    pub closed_at: Option<Timestamp>,    // When vault was successfully created post-payment
+    pub error_message: Option<String>,     // Details if state is Error
+    pub ledger_tx_hash: Option<String>,     // ICP ledger transaction hash if confirmed
+
+    // ChainFusion specific fields
+    pub chainfusion_swap_address: Option<String>, // e.g., ETH address user needs to send to
+    pub chainfusion_source_token: Option<String>, // e.g., "ETH", "USDT"
+    pub chainfusion_source_amount: Option<String>, // Estimated amount in source token (string for precision)
 }
 
 impl PaymentSession {
@@ -50,6 +58,23 @@ impl PaymentSession {
     pub fn is_expired(&self, current_time: Timestamp) -> bool {
         self.state == PayState::Issued && current_time > self.expires_at
     }
+}
+
+// Implement Storable for stable memory persistence
+impl Storable for PaymentSession {
+    fn to_bytes(&self) -> Cow<[u8]> {
+        Cow::Owned(ciborium::into_writer(&self, Vec::new()).unwrap())
+    }
+
+    fn from_bytes(bytes: Cow<[u8]>) -> Self {
+        ciborium::from_reader(bytes.as_ref()).unwrap()
+    }
+
+    // Estimate max size: ULID (26) + AccountID (64) + E8s (8) + Plan (30) +
+    // Method/State (~10) + Principal (29) + Timestamps (3*8=24) +
+    // Error (~100) + Hashes (2*66=132) + CF fields (~100 + 10 + 20 = 130)
+    // ~ 553 bytes. Round up generously.
+    const BOUND: Bound = Bound::Bounded { max_size: 600, is_fixed_size: false };
 }
 
 // --- In-Memory Store for Payment Sessions ---

@@ -1,0 +1,28 @@
+{
+  "canisters": {
+    "livault_backend": {
+      "type": "rust",
+      "package": "livault_backend",
+      "candid": "src/backend/livault_backend.did",
+      "optimize": "size"
+    }
+    // Add frontend canister definition here later if needed
+  },
+  "defaults": {
+    "build": {
+      "packtool": "",
+      "args": ""
+    }
+  },
+  "networks": {
+    "local": {
+      "bind": "127.0.0.1:8000",
+      "type": "ephemeral"
+    },
+    "ic": {
+      "providers": ["https://mainnet.dfinity.network"],
+      "type": "persistent"
+    }
+  },
+  "version": 1
+} 

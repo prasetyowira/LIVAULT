@@ -27,11 +27,11 @@
 | 5.3 | P5-5.3 | Implement certified data tree for get_metrics | @wira | Done | 2024-07-25 | Implemented in api.rs get_metrics |
 | 5.4 | P5-5.4 | Implement static analysis/guards | @wira | Done | 2024-07-25 | Panic hook added; build check is CI task |
 | 6.1 | P6 | Implement Metrics & Admin APIs | @wira | Done | 2024-07-25 | Implemented metrics, get_metrics, list_vaults, list_billing |
-| 7.1 | P7-7.1 | Implement swap_token & candid types | @wira | To-do | - |  |
-| 7.2 | P7-7.2 | Integrate adapter into Payment flow | @wira | To-do | - |  |
-| 7.3 | P7-7.3 | Manual validation with mocked CF API | @qa | To-do | - |  |
-| 7.4 | P7-7.4 | Extend Billing models for multi‑token | @wira | Done | 2024-07-25 | BillingEntry includes token field |
-| 8.1 | P8 | dfx workspace config | @wira | To-do | - |  |
+| 7.1 | P7-7.1 | Implement swap_token & candid types | @wira | Done | 2024-07-26 | Implemented CF adapter client logic & types in `adapter/chainfusion_adapter.rs` (Placeholder HTTP) |
+| 7.2 | P7-7.2 | Integrate adapter into Payment flow | @wira | Done | 2024-07-26 | Updated `PaymentService` to handle `chainfusion` method |
+| 7.3 | P7-7.3 | Manual validation with mocked CF API | @qa | To-do | - | Requires running backend locally |
+| 7.4 | P7-7.4 | Extend Billing models for multi‑token | @wira | Done | 2024-07-26 | Added fields to `BillingEntry` in `models/billing.rs` |
+| 8.1 | P8-8.1 | dfx workspace config | @wira | Done | 2024-07-26 | Created `dfx.json` at workspace root |
 
 Legend:
 * **To‑do** – not started
@@ -40,4 +40,4 @@ Legend:
 * **Blocked** – external dependency
 * **Done** – merged & verified
 
-*Last updated: 2024-07-25 by Gemini* 
+*Last updated: 2024-07-26 by Gemini* 

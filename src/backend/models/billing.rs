@@ -10,9 +10,12 @@ pub struct BillingEntry {
      pub date: u64, // Timestamp (epoch sec)
      pub vault_id: String, // VaultId
      pub tx_type: String, // e.g., "purchase", "upgrade"
-     pub amount_e8s: u64,
-     pub token: String, // e.g., "ICP", "ETH"
-     pub tx_hash: Option<String>, // Optional ledger transaction hash
+     pub amount_icp_e8s: u64, // Amount paid in ICP equivalent
+     pub original_token: Option<String>, // e.g., "ICP", "ETH", "USDT"
+     pub original_amount: Option<String>, // Amount in original token (String for precision)
+     pub payment_method: String, // e.g., "IcpDirect", "ChainFusion"
+     pub ledger_tx_hash: Option<String>, // ICP ledger transaction hash
+     pub swap_tx_hash: Option<String>, // Optional hash from the source chain (e.g., ETH tx hash)
      pub related_principal: Option<Principal>, // e.g., payer or vault owner
 }
 

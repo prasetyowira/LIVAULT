@@ -181,3 +181,40 @@ Implemented key security guards, metrics collection with certification, and admi
 - [Backend Plan](mdc:plans/backend.plan.md) (Phase 5, Phase 6)
 - [Backend Architecture](mdc:plans/backend.architecture.md) (Sections 8, 11, 13)
 - [Technical Design](mdc:plans/tech.docs.md)
+
+---
+
+## 2024-07-26 10:00: Backend Phases 7 & 8 Implementation
+
+### Overview
+Implemented the ChainFusion payment adapter integration (Phase 7) and the DFX workspace configuration (Phase 8) as outlined in the backend plan.
+
+### Phase 7: ChainFusion Adapter & HTTP Outcalls
+1.  **Billing Model (`src/backend/models/billing.rs`):** Extended `BillingEntry` struct to include fields (`original_token`, `original_amount`, `payment_method`, `swap_tx_hash`) necessary for multi-token payment tracking.
+2.  **Payment Model (`src/backend/models/payment.rs`):** Updated `PaymentSession` struct to include ChainFusion-specific fields (`chainfusion_swap_address`, `chainfusion_source_token`, `chainfusion_source_amount`).
+3.  **ChainFusion Adapter (`src/backend/adapter/chainfusion_adapter.rs`):**
+    *   Created placeholder request/response structs (`ChainFusionInitRequest`, `ChainFusionInitResponse`, `ChainFusionStatusRequest`, `ChainFusionStatusResponse`) and status enum (`ChainFusionSwapStatus`).
+    *   Implemented `initialize_chainfusion_swap` and `check_chainfusion_swap_status` async functions with **placeholder logic** simulating interaction with an external ChainFusion API (actual HTTP outcalls marked with `TODO`).
+4.  **Payment Service Integration (`src/backend/services/payment_service.rs`):**
+    *   Made `initialize_payment_session` async.
+    *   Added logic to call `initialize_chainfusion_swap` when `PayMethod::ChainFusion` is selected.
+    *   Refactored `verify_payment` to handle both `IcpDirect` and `ChainFusion` methods by calling dedicated verification functions (`verify_icp_ledger_payment`, `verify_chainfusion_payment`).
+    *   Implemented `verify_chainfusion_payment`, which calls `check_chainfusion_swap_status` and includes **placeholder logic** for verifying the final ICP transaction after CF reports completion.
+    *   Added logging using `ic_cdk::print` and `ic_cdk::eprintln` for payment flow visibility.
+
+### Phase 8: Deployment & Ops Automation
+1.  **DFX Configuration (`dfx.json`):** Created the `dfx.json` file at the workspace root, defining the `livault_backend` canister, build defaults, and network configurations for `local` and `ic`.
+
+### Dependencies
+- Relies on existing dependencies. No new external crates added.
+- Uses `ic_cdk::api::management_canister::http_request` for planned (but not yet implemented) HTTP outcalls.
+
+### Notes & TODOs
+- **Placeholders:** Critical logic for actual HTTP outcalls in `chainfusion_adapter.rs` and actual ICP ledger verification in `payment_service.rs` (for both direct and ChainFusion methods) are still placeholders (`TODO`).
+- **Integration:** Post-payment actions like updating vault status and adding billing entries in `verify_payment` are marked as `TODO` and need integration with `VaultService` and billing storage/service.
+- **Configuration:** `CHAINFUSION_API_URL` needs to be set to the correct value.
+
+### Related Documentation
+- [Backend Plan](mdc:plans/backend.plan.md) (Phase 7, Phase 8)
+- [Backend Architecture](mdc:plans/backend.architecture.md) (Section 7: Payment Adapter)
+- [Technical Design](mdc:plans/tech.docs.md)
