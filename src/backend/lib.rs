@@ -7,6 +7,7 @@ pub mod services;
 pub mod storage;
 pub mod utils;
 pub mod adapter;
+pub mod metrics;
 
 #[ic_cdk::init]
 fn init() {

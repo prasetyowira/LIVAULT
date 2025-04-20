@@ -1,13 +1,11 @@
 // src/backend/storage/structures.rs
 use crate::metrics::VaultMetrics;
-use crate::models::{
-    BillingEntry,
-    VaultConfig,
-    VaultContentItem,
-    VaultInviteToken,
-    VaultMember,
-    // Add other models like AuditLogEntry, VaultMetrics later
-};
+use crate::models::common::*;
+use crate::models::vault_config::{VaultConfig, UnlockConditions};
+use crate::models::vault_content_item::VaultContentItem;
+use crate::models::vault_invite_token::VaultInviteToken;
+use crate::models::vault_member::VaultMember;
+use crate::models::billing::BillingEntry;
 use crate::storage::memory::{
     get_audit_log_data_memory,
     get_audit_log_index_memory,

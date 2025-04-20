@@ -2,11 +2,21 @@
   "canisters": {
     "livault_backend": {
       "type": "rust",
-      "package": "livault_backend",
+      "package": "backend",
       "candid": "src/backend/livault_backend.did",
       "optimize": "size"
+    },
+    "internet_identity": {
+      "candid": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity.did",
+      "frontend": {},
+      "remote": {
+        "id": {
+          "ic": "rdmx6-jaaaa-aaaaa-aaadq-cai"
+        }
+      },
+      "type": "custom",
+      "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz"
     }
-    // Add frontend canister definition here later if needed
   },
   "defaults": {
     "build": {

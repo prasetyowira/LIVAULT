@@ -42,7 +42,7 @@
 ## Phase 1 — Core Models & Storage (Day 1‑2)
 | # | Task | Deliverables | Notes |
 |---|------|--------------|-------|
-| 1.1 | Port JSON schemas → Rust structs in `src/backend/models/` | `vault_config.rs`, `vault_member.rs`, ... | Derive `CandidType`, `Deserialize`, `Serialize`, `ic_cbor::Type` |
+| 1.1 | Port JSON schemas → Rust structs in `src/backend/models/` | `vault_config.rs`, `vault_member.rs`, ... | Derive `CandidType`, `Deserialize`, `Serialize` |
 | 1.2 | Implement `src/backend/storage/` module wrapping `ic_stable_structures` BTree maps | `src/backend/storage/mod.rs` | Prefixing helpers (`vault_prefix`, etc.) |
 | 1.3 | Manual validation of (de)serialisation & storage round‑trip | Checklist script | Run `src/backend/scripts/run_manual_model_checks.sh` |
 | 1.4 | Implement basic cursor helper (StableCell<u64>) | `src/backend/storage/cursor.rs` | Follows *icp.mdc* cheatsheet for pagination |

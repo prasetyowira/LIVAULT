@@ -1,4 +1,4 @@
-"""// src/backend/services/payment_service.rs
+// src/backend/services/payment_service.rs
 use crate::{
     error::VaultError,
     models::{
@@ -13,7 +13,7 @@ use crate::{
 use candid::Principal;
 use ic_cdk::api::{self, time};
 use std::time::Duration;
-use ic_ledger_types::{AccountIdentifier, Subaccount, AccountBalanceArgs, TOKEN_SUBDIVIDABLE_BY, DEFAULT_SUBACCOUNT, transfer, TransferArgs, Memo, Tokens};
+use ic_ledger_types::{AccountIdentifier, Subaccount, AccountBalanceArgs, DEFAULT_SUBACCOUNT, transfer, TransferArgs, Memo, Tokens};
 
 // Constants
 const PAYMENT_SESSION_TIMEOUT_SECONDS: u64 = 30 * 60; // 30 minutes
@@ -350,5 +350,3 @@ pub fn close_payment_session(session_id: &SessionId) -> Result<(), VaultError> {
 
 // TODO: Add function to handle ChainFusion payments (initiate swap, verify swap completion)
 // TODO: Add function to get payment session status
-
-"" 

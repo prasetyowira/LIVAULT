@@ -127,7 +127,7 @@ sequenceDiagram
 ---
 
 ## 4. Stable Memory **Storage Layout**
-> Powered by `ic-stable-structures` up to 4 GB, deterministic B‑Tree indexes and `ciborium 0.2`.
+> Powered by `ic-stable-structures` up to 4 GB, deterministic B‑Tree indexes and `ciborium 0.2.2`.
 
 | Segment | Key | Value Type | Description |
 |---------|-----|-----------|-------------|

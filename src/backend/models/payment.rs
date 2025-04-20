@@ -2,6 +2,7 @@
 // Placeholder for PaymentSession struct and related payment models 
 
 use crate::models::common::{PrincipalId, Timestamp};
+use crate::error::{VaultError};
 use candid::{CandidType, Deserialize, Nat};
 use serde::Serialize;
 use std::cell::RefCell;
@@ -133,7 +134,7 @@ pub struct TransferArgs {
     pub fee: Tokens,
     pub from_subaccount: Option<Subaccount>,
     pub to: AccountIdentifier,
-    pub created_at_time: Option<ic_cdk::export::candid::Nat>,
+    pub created_at_time: Option<Nat>,
 }
 
 #[derive(CandidType, Deserialize, Debug)]

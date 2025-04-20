@@ -1,8 +1,9 @@
 // src/backend/models/billing.rs
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
-use ic_stable_structures::{Storable, Bound};
+use ic_stable_structures::Storable;
 use std::borrow::Cow;
+use ic_stable_structures::storable::Bound;
 
 // Matches the definition in backend.architecture.md & api.rs
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, Default)]

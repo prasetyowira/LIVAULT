@@ -1,7 +1,7 @@
 // src/backend/utils/rate_limit.rs
 use crate::error::VaultError;
+use candid::Principal; // Import Nat
 use ic_cdk::api::time;
-use ic_cdk::export::Principal;
 use std::cell::RefCell;
 use std::collections::HashMap;
 

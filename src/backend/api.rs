@@ -5,7 +5,9 @@ use crate::{
     error::VaultError,
     metrics::VaultMetrics, // Import the correct VaultMetrics struct
     models::common::*,
-    models::{VaultConfig, VaultInviteToken, VaultMember, UnlockConditions},
+    models::vault_config::{VaultConfig, UnlockConditions},
+    models::vault_invite_token::VaultInviteToken,
+    models::vault_member::VaultMember,
     services::{
         invite_service::{self, InviteClaimData, MemberProfile},
         upload_service::{self, FileMeta},
@@ -20,13 +22,13 @@ use crate::{
     storage::{VAULT_CONFIGS, BILLING_LOG, Cbor}, // Import storage structures
 };
 use candid::{CandidType, Deserialize, Principal, Nat}; // Import Nat
-use ic_cdk::{caller, query, update, api};
+use ic_cdk::{caller, api};
 use ic_cdk::api::{canister_balance128, data_certificate, set_certified_data}; // Import IC APIs
-use ic_cdk_macros::query; // Use specific import for clarity
+use ic_cdk_macros::{query, update}; // Use specific import for clarity
 use crate::models::payment::PaymentSession; // Import PaymentSession for return type
 use std::cell::RefCell;
 use std::collections::HashMap;
-use validator::{Validate, ValidationError}; // Assuming 'validator' crate is added or available
+use validator::{Validate, ValidationError};
 
 // --- Admin Principal (Example - Load from stable memory/config later) ---
 thread_local! {
@@ -194,17 +196,6 @@ pub struct VaultSummary {
      pub created_at: Timestamp,
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug, Default)]
-pub struct BillingEntry {
-     // Define fields based on architecture doc
-     pub date: Timestamp,
-     pub vault_id: VaultId,
-     pub tx_type: String, // purchase, upgrade, etc.
-     pub amount_e8s: u64,
-     pub token: String, // ICP, ETH, etc.
-     pub tx_hash: Option<String>,
-}
-
 // Define the response type for get_metrics including dynamic cycle balance
 #[derive(CandidType, Deserialize, Clone, Debug)]
 pub struct GetMetricsResponse {
@@ -241,7 +232,7 @@ async fn init_payment(req: ApiPaymentInitRequest) -> Result<PaymentSession, Vaul
     payment_service::initialize_payment_session(session_data).await
 }
 
-#[derive(CandidType, Deserialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct VerifyPaymentRequest {
     pub session_id: SessionId,
     pub vault_id: VaultId, // Likely needed to link payment to vault
@@ -482,4 +473,3 @@ fn export_candid() -> String {
     __export_generated_candid()
 }
 
-"" 
