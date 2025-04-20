@@ -15,9 +15,14 @@
 | 2.3 | P2‑2.3 | UploadService chunk logic | @wira | Done | - | In-memory staging done |
 | 2.4 | P2‑2.4 | SchedulerService hooks | @wira | Done | - | Placeholders implemented |
 | 2.5 | P2‑2.5 | Edge‑case **manual testing** of services | @qa | Backlog | – | remove automated fuzz |
-| 3.1 | P3‑3.1 | Define public candid API | @wira | To-do | – | Services layer ready |
-| 3.4 | P3‑3.4 | Manual happy‑path verification with `dfx` | @backend | Backlog | – | skip PocketIC CI |
-| 4.3 | P4‑4.3 | Manual e2e: pay → verify → vault create | @qa | Backlog | – | ledger simulator script |
+| 3.1 | P3‑3.1 | Define public candid API | @wira | Done | – | Endpoints wired to services |
+| 3.2 | P3‑3.2 | Wire services into entry points | @wira | Done | - | Done as part of 3.1 |
+| 3.3 | P3‑3.3 | Implement token-bucket rate guard | @wira | Done | - | Implemented in utils/rate_limit.rs |
+| 3.4 | P3‑3.4 | Manual happy‑path verification with `dfx` | @qa | To-do | – | API ready for testing |
+| 4.1 | P4‑4.1 | Implement PaymentSession model & store | @wira | Done | - | In-memory store implemented |
+| 4.2 | P4‑4.2 | Wire init/verify payment (ICP direct) | @wira | Done | - | Basic service & API done |
+| 4.3 | P4‑4.3 | Manual e2e: pay → verify → vault create | @qa | To-do | – | API ready for testing |
+| 5.1 | P5-5.1 | Input validation & error mapping | @wira | To-do | - | API layer ready |
 | ... | ... | ... | ... | ... | ... | ... |
 
 Legend: 

@@ -87,4 +87,47 @@ Implemented the initial service layer logic for the backend canister, covering c
 ### Related Documentation
 - [Backend Plan](mdc:plans/backend.plan.md) (Phase 2)
 - [Backend Architecture](mdc:plans/backend.architecture.md)
-- [Technical Design](mdc:plans/tech.docs.md) 
+- [Technical Design](mdc:plans/tech.docs.md)
+
+---
+
+## 2024-07-25 19:00: Backend Phases 3 & 4 Completion
+
+### Overview
+Completed the implementation of the Candid API layer (Phase 3) and the payment adapter stub (Phase 4) for the backend canister.
+
+### Phase 3: Candid API & Entry Points
+1.  **API Endpoints (`src/backend/api.rs`):**
+    *   Defined Candid `#[update]` and `#[query]` functions for core vault, invite, and upload operations (`create_vault`, `get_vault`, `update_vault`, `generate_invite`, `claim_invite`, `begin_upload`, `upload_chunk`, `finish_upload`).
+    *   Created corresponding request structs (`CreateVaultRequest`, `UpdateVaultRequest`, etc.) following ICP API conventions.
+    *   Wired these endpoints to the respective functions in the `services` layer.
+2.  **Rate Limiting (`src/backend/utils/rate_limit.rs`):**
+    *   Implemented a token bucket algorithm using an in-memory `HashMap` keyed by `Principal`.
+    *   Created the `rate_guard` function and applied it to all `#[update]` and `#[query]` endpoints in `api.rs`.
+
+### Phase 4: Payment Adapter Stub
+1.  **Payment Model (`src/backend/models/payment.rs`):**
+    *   Defined the `PaymentSession` struct along with supporting enums (`PayMethod`, `PayState`) and types (`SessionId`, `E8s`).
+    *   Included placeholder types for ICP Ledger interaction (`AccountIdentifier`, `Tokens`, `Memo`, etc.).
+    *   Implemented an in-memory `HashMap` (`PAYMENT_SESSIONS`) and helper functions (`store_payment_session`, `with_payment_session_mut`, `with_payment_session`) for managing payment sessions.
+2.  **Payment Service Stub (`src/backend/services/payment_service.rs`):**
+    *   Implemented `initialize_payment_session` for `PayMethod::IcpDirect`, generating a session ID and storing the session state in memory.
+    *   Implemented `verify_icp_payment` with state checks (expiry, status) and **placeholder logic** for querying the ICP ledger. Added logic to update the vault status via `vault_service::set_vault_status` upon successful (simulated) verification.
+3.  **API Integration (`src/backend/api.rs`):**
+    *   Added the `init_payment` and `verify_payment` endpoints, wiring them to the `PaymentService` functions.
+    *   Defined `InitPaymentRequest` and `VerifyPaymentRequest` structs.
+
+### Dependencies
+- Used `ic_cdk::update`, `ic_cdk_macros::query` for endpoint definitions.
+- Used `serde_bytes` for handling `Vec<u8>` in Candid.
+
+### Notes & TODOs
+- **Ledger Interaction:** The `verify_icp_payment` function currently uses **placeholder logic** and does **not** perform actual calls to the ICP ledger. This needs to be implemented using appropriate ledger interaction crates/methods.
+- **Pay-to Principal:** The `initialize_payment_session` function uses the `caller` principal as a **placeholder** for `pay_to_principal`. A secure implementation must derive a unique subaccount/principal per session.
+- Further implementation is needed for ChainFusion payments, detailed authorization logic in API endpoints, and completing TODOs in the service layer.
+
+### Related Documentation
+- [Backend Plan](mdc:plans/backend.plan.md) (Phase 3, Phase 4)
+- [Backend Architecture](mdc:plans/backend.architecture.md) (Sections 6, 7, 13)
+- [Technical Design](mdc:plans/tech.docs.md) (Sections 3, 4, 1.1)
+- [icp-api-conventions.mdc](mdc:icp-api-conventions.mdc)

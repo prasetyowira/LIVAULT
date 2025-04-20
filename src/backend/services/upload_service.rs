@@ -3,18 +3,21 @@
 
 use crate::{
     error::VaultError,
-    models::{common::*, VaultContentItem},
-    storage::{self, Cbor, StorableString, CONTENT_INDEX, CONTENT_ITEMS},
+    models::{common::*, VaultConfig, VaultContentItem},
+    storage::{self, Cbor, StorableString, CONTENT_INDEX, CONTENT_ITEMS, VAULT_CONFIGS},
     utils::crypto::generate_ulid,
+    services::vault_service, // For getting vault config
 };
 use ic_cdk::api::time;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use hex; // For checksum comparison
 
 type UploadId = String;
+type ContentId = String;
 const MAX_CHUNK_SIZE_BYTES: usize = 512 * 1024; // 512 KB
-const MAX_TOTAL_UPLOAD_SIZE_BYTES: u64 = 10 * 1024 * 1024; // Example: 10 MB limit per file initially
+// Removed MAX_TOTAL_UPLOAD_SIZE_BYTES, will use vault quota
 
 // Represents metadata provided when starting an upload
 #[derive(Clone, Debug, candid::CandidType, serde::Deserialize)]
@@ -24,12 +27,12 @@ pub struct FileMeta {
     pub size_bytes: u64,     // Total expected size
     pub content_type: ContentType, // Should be File, Password, or Letter
     pub title: Option<String>,
-    pub description: Option<String>,
+    // Removed description, assuming VaultContentItem handles it if needed
 }
 
 // In-memory state for an ongoing chunked upload
 #[derive(Clone, Debug)]
-struct UploadState {
+pub struct UploadState {
     vault_id: VaultId,
     upload_id: UploadId,
     file_meta: FileMeta,
@@ -41,9 +44,68 @@ struct UploadState {
 
 thread_local! {
     // In-memory map to store ongoing uploads. Cleared on upgrade.
-    // Key: UploadId, Value: UploadState
-    // TODO: Consider moving to stable memory if uploads need to survive upgrades.
-    static ACTIVE_UPLOADS: RefCell<HashMap<UploadId, UploadState>> = RefCell::new(HashMap::new());
+    pub static ACTIVE_UPLOADS: RefCell<HashMap<UploadId, UploadState>> = RefCell::new(HashMap::new());
+}
+
+// --- Helper Functions ---
+
+fn validate_mime_type(mime_type: &str, content_type: &ContentType) -> Result<(), VaultError> {
+    match content_type {
+        ContentType::File => {
+            // Allowed MIME types for files based on prd.md
+            let allowed_mimes = [
+                "application/pdf",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", // .docx
+                "application/msword", // .doc
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+                "application/vnd.ms-excel", // .xls
+                "image/jpeg",
+                "image/png",
+                "text/plain",
+                // Add more as needed
+            ];
+            if !allowed_mimes.contains(&mime_type) {
+                return Err(VaultError::UploadError(format!(
+                    "Disallowed MIME type '{}' for File content type.",
+                    mime_type
+                )));
+            }
+        }
+        ContentType::Password | ContentType::Letter => {
+            // Passwords and letters are essentially text, allow text/plain or specific internal type?
+            if mime_type != "text/plain" && !mime_type.is_empty() { // Allow empty mime for simplicity?
+                 return Err(VaultError::UploadError(format!(
+                    "Invalid MIME type '{}' for {:?} content type. Expected 'text/plain' or empty.",
+                    mime_type, content_type
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Helper to update the vault's storage usage directly in stable storage.
+fn update_vault_storage_usage(vault_id: &VaultId, bytes_added: u64) -> Result<(), VaultError> {
+    storage::VAULT_CONFIGS.with(|map_ref| {
+        let key = StorableString(Cbor(vault_id.clone()));
+        let mut map = map_ref.borrow_mut();
+        if let Some(mut config_cbor) = map.get(&key) {
+            let mut config: VaultConfig = config_cbor.0;
+            config.storage_used_bytes = config.storage_used_bytes.saturating_add(bytes_added);
+            config.updated_at = time();
+            // Insert the updated config back
+            map.insert(key, Cbor(config)).map_err(|e| {
+                VaultError::StorageError(format!("Failed to update vault storage usage: {:?}", e))
+            })?;
+             ic_cdk::print(format!(
+                "💾 INFO: Updated vault {} storage usage by {} bytes.",
+                vault_id, bytes_added
+            ));
+            Ok(())
+        } else {
+            Err(VaultError::VaultNotFound(vault_id.clone())) // Should not happen if called after get_vault_config
+        }
+    })
 }
 
 // --- Service Functions ---
@@ -60,36 +122,43 @@ thread_local! {
 pub fn begin_chunked_upload(
     vault_id: VaultId,
     file_meta: FileMeta,
-    caller: PrincipalId, // TODO: Use caller for auth/quota
+    caller: PrincipalId,
 ) -> Result<UploadId, VaultError> {
-    // 1. Validate Vault and Permissions (Simplified)
-    let vault_config = super::vault_service::get_vault_config(&vault_id)?;
+    // 1. Validate Vault and Permissions
+    let vault_config = vault_service::get_vault_config(&vault_id)?;
     if vault_config.owner != caller { // Simplistic check, might need more roles
         return Err(VaultError::NotAuthorized("Caller cannot upload to this vault".to_string()));
     }
+    // TODO: Add check for vault status allowing uploads (e.g., Active)
 
     // 2. Validate FileMeta
     if file_meta.size_bytes == 0 {
         return Err(VaultError::UploadError("File size cannot be zero".to_string()));
     }
-    if file_meta.size_bytes > MAX_TOTAL_UPLOAD_SIZE_BYTES {
-        // TODO: Check against vault_config.storage_quota_bytes instead?
-        return Err(VaultError::UploadError(format!(
-            "Upload size {} exceeds limit {}",
+
+    // 3. Check against vault quota
+    let available_quota = vault_config.storage_quota_bytes.saturating_sub(vault_config.storage_used_bytes);
+    if file_meta.size_bytes > available_quota {
+        return Err(VaultError::StorageLimitExceeded(format!(
+            "Upload size {} bytes exceeds available quota {} bytes (Used: {}, Total: {}).",
             file_meta.size_bytes,
-            MAX_TOTAL_UPLOAD_SIZE_BYTES
+            available_quota,
+            vault_config.storage_used_bytes,
+            vault_config.storage_quota_bytes
         )));
     }
-    // TODO: Validate mime_type based on content_type?
 
-    // 3. Calculate expected chunks
+    // 4. Validate MIME type based on ContentType
+    validate_mime_type(&file_meta.mime_type, &file_meta.content_type)?;
+
+    // 5. Calculate expected chunks
     let expected_chunks = (file_meta.size_bytes as usize + MAX_CHUNK_SIZE_BYTES - 1) / MAX_CHUNK_SIZE_BYTES;
 
-    // 4. Create Upload State
+    // 6. Create Upload State
     let upload_id = generate_ulid();
     let current_time = time();
     let state = UploadState {
-        vault_id,
+        vault_id: vault_id.clone(), // Clone vault_id here
         upload_id: upload_id.clone(),
         file_meta,
         chunks: Vec::with_capacity(expected_chunks),
@@ -98,9 +167,9 @@ pub fn begin_chunked_upload(
         created_at: current_time,
     };
 
-    // 5. Store upload state in memory
+    // 7. Store upload state in memory
     ACTIVE_UPLOADS.with(|map| {
-        map.borrow_mut().insert(upload_id.clone(), state);
+        map.borrow_mut().insert(upload_id.clone(), state.clone()); // Clone state
     });
 
     ic_cdk::print(format!(
@@ -129,7 +198,7 @@ pub fn upload_next_chunk(
         let mut active_map = map.borrow_mut();
         let state = active_map
             .get_mut(upload_id)
-            .ok_or_else(|| VaultError::UploadError("Upload session not found".to_string()))?;
+            .ok_or_else(|| VaultError::UploadError("Upload session not found or expired".to_string()))?;
 
         // 1. Validate chunk index
         let expected_index = state.received_chunks as u32;
@@ -147,15 +216,31 @@ pub fn upload_next_chunk(
                 data.len(), MAX_CHUNK_SIZE_BYTES
             )));
         }
-        // Check last chunk size if possible
+        // Check last chunk size
         if (chunk_index as usize == state.expected_chunks - 1) {
-            let expected_last_chunk_size = state.file_meta.size_bytes as usize % MAX_CHUNK_SIZE_BYTES;
-            if expected_last_chunk_size > 0 && data.len() != expected_last_chunk_size {
-                 return Err(VaultError::UploadError("Incorrect size for the last chunk".to_string()));
+            let expected_last_chunk_size = if state.file_meta.size_bytes == 0 { // Avoid modulo by zero if file size is 0 (should be caught earlier)
+                0
+            } else {
+                 state.file_meta.size_bytes as usize % MAX_CHUNK_SIZE_BYTES
+            };
+            // If expected_last_chunk_size is 0, it means the file size is a perfect multiple of MAX_CHUNK_SIZE_BYTES
+            let correct_last_chunk_size = if expected_last_chunk_size == 0 {
+                 MAX_CHUNK_SIZE_BYTES
+            } else {
+                expected_last_chunk_size
+            };
+
+            if data.len() != correct_last_chunk_size {
+                 return Err(VaultError::UploadError(format!(
+                    "Incorrect size for the last chunk. Expected {}, Got {}",
+                    correct_last_chunk_size,
+                    data.len()
+                 )));
             }
         }
 
         // 3. Store chunk (in memory for now)
+        // Ensure chunks are added in order. Since we check index, push is safe.
         state.chunks.push(data);
         state.received_chunks += 1;
 
@@ -173,58 +258,54 @@ pub fn upload_next_chunk(
 ///
 /// # Arguments
 /// * `upload_id` - The ID of the upload session.
-/// * `sha256_checksum` - The SHA256 checksum of the complete file, calculated client-side.
+/// * `sha256_checksum_hex` - The SHA256 checksum of the complete file (hex encoded), calculated client-side.
 ///
 /// # Returns
 /// * `Result<ContentId, VaultError>` - The ID of the newly created content item or an error.
 pub fn finish_chunked_upload(
     upload_id: &UploadId,
-    sha256_checksum: String,
+    sha256_checksum_hex: String,
 ) -> Result<ContentId, VaultError> {
     // 1. Retrieve and remove upload state from memory
     let state = ACTIVE_UPLOADS.with(|map| {
         map.borrow_mut()
             .remove(upload_id)
-            .ok_or_else(|| VaultError::UploadError("Upload session not found or already finished".to_string()))
+            .ok_or_else(|| VaultError::UploadError("Upload session not found, expired, or already finished".to_string()))
     })?;
 
     // 2. Verify all chunks received
     if state.received_chunks != state.expected_chunks {
-        // Put state back if validation fails? Or just fail?
-        // ACTIVE_UPLOADS.with(|map| map.borrow_mut().insert(upload_id.clone(), state));
+        // Don't put state back, it's invalid.
         return Err(VaultError::UploadError(format!(
             "Upload not complete. Received {} out of {} expected chunks.",
             state.received_chunks, state.expected_chunks
         )));
     }
 
-    // 3. Reconstruct and verify checksum
+    // 3. Reconstruct file and verify checksum
     let mut hasher = Sha256::new();
     let mut total_bytes = 0;
     for chunk in &state.chunks {
         hasher.update(chunk);
         total_bytes += chunk.len();
     }
-    let calculated_checksum = format!("{:x}", hasher.finalize());
+    let calculated_checksum = hasher.finalize();
+    let calculated_checksum_hex = hex::encode(calculated_checksum);
 
-    if calculated_checksum != sha256_checksum {
-        return Err(VaultError::UploadError(
-            "Checksum mismatch. Calculated vs Provided.".to_string(), // Avoid logging checksums
-        ));
+    if calculated_checksum_hex != sha256_checksum_hex {
+         // TODO: Consider how to handle this - maybe allow retry?
+         return Err(VaultError::ChecksumMismatch);
     }
+
+    // Verify total bytes match file meta
     if total_bytes as u64 != state.file_meta.size_bytes {
          return Err(VaultError::UploadError(format!(
-            "Total size mismatch. Reconstructed {} vs expected {}",
+            "Total uploaded bytes ({}) do not match expected size ({})",
             total_bytes, state.file_meta.size_bytes
         )));
     }
 
-    // 4. Concatenate chunks into the final payload
-    // For large files, this might exceed Wasm memory limits.
-    // A more robust solution would write directly to stable storage or use blob store.
-    let final_payload: Vec<u8> = state.chunks.concat();
-
-    // 5. Create VaultContentItem
+    // 4. Create VaultContentItem
     let content_id = generate_ulid();
     let current_time = time();
     let content_item = VaultContentItem {
@@ -232,47 +313,56 @@ pub fn finish_chunked_upload(
         vault_id: state.vault_id.clone(),
         content_type: state.file_meta.content_type,
         title: state.file_meta.title,
-        description: state.file_meta.description,
+        filename: Some(state.file_meta.filename), // Store original filename
+        mime_type: Some(state.file_meta.mime_type),
+        size_bytes: state.file_meta.size_bytes,
         created_at: current_time,
         updated_at: current_time,
-        payload: final_payload,
-        payload_size_bytes: state.file_meta.size_bytes,
-        payload_sha256: Some(calculated_checksum),
+        payload_checksum: Some(sha256_checksum_hex),
+        // The actual payload (concatenated chunks) is stored separately or managed by asset canister
+        // For now, let's assume payload refers to the encrypted data blob.
+        // If using stable memory directly, we store concatenated chunks here.
+        // NOTE: Storing large blobs directly in stable memory BTree value might be inefficient.
+        // Consider alternative storage patterns (StableVec, chunking in stable mem, etc.)
+        payload: state.chunks.concat(), // Concatenate chunks for storage
     };
 
-    // 6. Store VaultContentItem
-    CONTENT_ITEMS.with(|map| {
+    // 5. Store Content Item
+    storage::CONTENT_ITEMS.with(|map| {
         let key = StorableString(Cbor(content_id.clone()));
-        let value = Cbor(content_item);
-        map.borrow_mut().insert(key, value)
+        let value = Cbor(content_item.clone()); // Clone needed for index update
+        map.borrow_mut()
+            .insert(key, value)
             .map_err(|e| VaultError::StorageError(format!("Failed to store content item: {:?}", e)))
     })?;
 
-    // 7. Update Content Index
-    CONTENT_INDEX.with(|map| {
+    // 6. Update Content Index for the vault
+    storage::CONTENT_INDEX.with(|map| {
         let key = StorableString(Cbor(state.vault_id.clone()));
-        let mut borrowed_map = map.borrow_mut();
-        let mut index = match borrowed_map.get(&key) {
-            Some(storable_vec) => storable_vec.0, // Get inner Vec<String>
+        let mut index_list = match map.borrow().get(&key) {
+            Some(list_cbor) => list_cbor.0,
             None => Vec::new(),
         };
-        index.push(content_id.clone());
-        borrowed_map.insert(key, Cbor(index))
+        index_list.push(content_id.clone());
+        map.borrow_mut()
+            .insert(key, Cbor(index_list))
             .map_err(|e| VaultError::StorageError(format!("Failed to update content index: {:?}", e)))
     })?;
 
-    // 8. TODO: Update VaultConfig storage_used_bytes
-    // let _ = update_storage_usage(&state.vault_id, state.file_meta.size_bytes);
+    // 7. Update Vault Storage Usage
+    update_vault_storage_usage(&state.vault_id, state.file_meta.size_bytes)?;
 
     ic_cdk::print(format!(
-        "📝 INFO: Finished upload {}. Content item {} created for vault {}",
-        upload_id, content_id, state.vault_id
+        "✅ INFO: Finished upload {} for vault {}. New content item {}. Size: {}",
+        upload_id, state.vault_id, content_id, state.file_meta.size_bytes
     ));
 
     Ok(content_id)
 }
 
-// TODO: Add cleanup mechanism for stale/abandoned uploads in ACTIVE_UPLOADS map
-// TODO: Function to update vault storage usage
+// TODO: Add function to get content item details
+// TODO: Add function to delete content item (requires updating index and storage usage)
+// TODO: Add function to list content items for a vault (using the index)
+// TODO: Add cleanup for stale/abandoned uploads (maybe in scheduler?)
 
 "" 

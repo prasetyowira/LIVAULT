@@ -4,6 +4,7 @@ pub mod vault_member;
 pub mod vault_invite_token;
 pub mod vault_content_item;
 pub mod payment;
+// pub mod api_types; // Potential future module for API-specific structs
 // Add other models as needed, e.g., for metrics, logs
 
 // Re-export common types/enums for easier access

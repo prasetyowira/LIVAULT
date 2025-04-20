@@ -12,7 +12,7 @@
 | Language | Rust 2024 (async/await, trait-driven) |
 | Target | `wasm32-unknown-unknown` (compiled via `cargo +nightly build --release`) |
 | Frameworks | None (custom IC canister logic) |
-| Crypto | `aes-gcm`, `sha2`, `rand`, `shamir-secret-sharing` |
+| Crypto | `aes-gcm`, `sha2`, `rand`, `vsss-rs` |
 | Stable Memory | `ic-stable-structures`, `serde_cbor` |
 | Testing | `cargo test`, `dfx` local testing |
 

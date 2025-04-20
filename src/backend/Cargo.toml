@@ -14,16 +14,17 @@ ic-stable-structures = "0.6.8"
 ic-cbor = "3.0.3"
 ic-cdk-timers = "0.11.0" # From plan's target stack
 ic-utils = "0.40.0" # Explicitly requested version
+ic-ledger-types = "0.14.0"
 serde = { version = "1", features = ["derive"] }
 serde_bytes = "0.11" # Explicitly requested version
 thiserror = "1.0" # Common error handling library
 
 # Dependencies needed based on architecture/tech docs
-ulid = { version = "1.2.2", features = ["serde"] } # For ULIDs mentioned in architecture
+ulid = { version = "1.2.2", features = ["serde"] } # For ULIDs mentioned in architecture (Removed "std" feature for Wasm compatibility)
 aes-gcm = "0.10.3" # For encryption mentioned in tech docs
 sha2 = "0.10.8" # For checksums mentioned in tech docs
-rand = "0.8.5" # For randomness mentioned in tech docs
-shamir-secret-sharing = "0.3.1" # For Shamir shares mentioned in tech docs
+hex = "0.4"
+vsss-rs = "5.1"
 
 [dev-dependencies]
 # Add testing dependencies later if needed
