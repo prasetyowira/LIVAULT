@@ -88,16 +88,7 @@ ic_cdk::print("❌ ERROR: user not found");
 
 ## 🧩 Structure & Modularity
 
-Follow user tech.docs or guidelines, if not have any then follow this structure below:
-
-- `lib.rs` → Main entry point, module declarations
-- `error.rs` → Error handling
-- `api.rs` → endpoint definitions
-- `service.rs` → core logic
-- `models.rs` → structs/enums
-- `storage.rs` → stable memory + helpers to interact with it (like repository layer)
-- `utils.rs` → Helper functions
-- `auth.rs` → Authentication and authorization
+Follow user tech.docs or guidelines, if not have any then follow this structure below
 
 ---
 

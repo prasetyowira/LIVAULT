@@ -26,23 +26,26 @@
 
 ---
 
+## READ THIS
+- all base directory for backend are `src/backend/`
+- if any docs already prefixed `src/backend/`, no need to append. eg: `src/backend/storage` is correct
+
 ## Phase 0 — Project Scaffolding (Day 0‑1)
 | # | Task | Deliverables | Notes |
 |---|------|--------------|-------|
-| 0.1 | Create `backend/` Cargo workspace with `canister` crate | `Cargo.toml`, `lib.rs` with `cdylib` target | Use `rust-toolchain.toml` pinning 2024‑edition nightly; ensure `crate-type = ["cdylib", "lib"]` & `#![no_std]` for WASM |
+| 0.1 | Create `src/backend/` | `Cargo.toml`, `lib.rs` | Use `rust-toolchain.toml` pinning 2024‑edition ,s|
 | 0.2 | Add dependencies (see *Target stack* + `serde`, `candid`, `thiserror`) | `cargo check --target wasm32-unknown-unknown` passes | All libs must compile for `wasm32` (icp.mdc rule) |
-| 0.3 | Add CI skeleton (GitHub Actions) | `.github/workflows/ci.yml` | Matrix build: `cargo clippy --target wasm32-unknown-unknown`; `cargo test` (wasm32) |
-| 0.4 | Scaffold module layout per *icp-api-conventions* | `src/{lib,api,models,services,storage,utils,error}.rs` | Align with convention: query/update separation, request structs |
+| 0.3 | Scaffold module layout per *icp-api-conventions* | `src/backend/{lib,api,models,services,storage,utils,error}.rs` | Align with convention: query/update separation, request structs |
 
 ---
 
 ## Phase 1 — Core Models & Storage (Day 1‑2)
 | # | Task | Deliverables | Notes |
 |---|------|--------------|-------|
-| 1.1 | Port JSON schemas → Rust structs in `models/` | `vault_config.rs`, `vault_member.rs`, ... | Derive `CandidType`, `Deserialize`, `Serialize`, `ic_cbor::Type` |
-| 1.2 | Implement `storage/` module wrapping `ic_stable_structures` BTree maps | `storage/mod.rs` | Prefixing helpers (`vault_prefix`, etc.) |
-| 1.3 | Manual validation of (de)serialisation & storage round‑trip | Checklist script | Run `scripts/run_manual_model_checks.sh` |
-| 1.4 | Implement basic cursor helper (StableCell<u64>) | `storage/cursor.rs` | Follows *icp.mdc* cheatsheet for pagination |
+| 1.1 | Port JSON schemas → Rust structs in `src/backend/models/` | `vault_config.rs`, `vault_member.rs`, ... | Derive `CandidType`, `Deserialize`, `Serialize`, `ic_cbor::Type` |
+| 1.2 | Implement `src/backend/storage/` module wrapping `ic_stable_structures` BTree maps | `src/backend/storage/mod.rs` | Prefixing helpers (`vault_prefix`, etc.) |
+| 1.3 | Manual validation of (de)serialisation & storage round‑trip | Checklist script | Run `src/backend/scripts/run_manual_model_checks.sh` |
+| 1.4 | Implement basic cursor helper (StableCell<u64>) | `src/backend/storage/cursor.rs` | Follows *icp.mdc* cheatsheet for pagination |
 
 ---
 

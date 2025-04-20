@@ -4,9 +4,9 @@
 
 | ID | Phase.Task | Title | Assignee | Status | ETA | Notes |
 |----|------------|-------|----------|--------|-----|-------|
-| 0.1 | P0‑0.1 | Scaffold Cargo workspace | @wira | Done | 2025‑04‑20 | `backend/` dir created |
-| 0.2 | P0‑0.2 | Add core dependencies | @wira | To‑do | 2025‑04‑21 | See plan stack versions |
-| 0.3 | P0‑0.3 | Setup GitHub Actions CI | @devops | To‑do | 2025‑04‑22 | fmt, clippy, wasm build |
+| 0.1 | P0‑0.1 | Scaffold Cargo workspace | @wira | To‑do | 2025‑04‑20 | `src/backend/` dir created |
+| 0.2 | P0‑0.2 | Add core dependencies | @wira | To‑do | 2025‑04‑21 | dependencies added in Cargo.toml |
+| 0.3 | P0‑0.3 | Scaffold module | @wira | To‑do | 2025‑04‑22 | backend modules created |
 | 1.1 | P1‑1.1 | Port `vault_config` schema to Rust | @backend | To‑do | 2025‑04‑24 | derive CandidType |
 | 1.2 | P1‑1.2 | Storage module BTreeMap wrapper | @backend | To‑do | 2025‑04‑25 | including prefix helpers |
 | 1.3 | P1‑1.3 | Model serde round‑trip **manual validation** | @qa | To‑do | 2025‑04‑26 | scripts/run_manual_model_checks.sh |

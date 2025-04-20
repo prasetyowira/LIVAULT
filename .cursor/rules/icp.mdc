@@ -26,7 +26,6 @@ This guide provides a reference for implementing cursors in Rust-based ICP canis
 ---
 
 ## Project Layout
-- Base src directory: `src/`
 - Base Backend (Rust) source code directory: `src/backend`
 - Base Frontend source code directory: `src/frontend`
 

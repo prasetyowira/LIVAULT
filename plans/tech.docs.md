@@ -66,7 +66,7 @@ graph LR
 
 ## 2. Canister Module Layout (Rust)
 ```
-src/
+src/backend/
   lib.rs         // Canister entry, init + heartbeat
   api.rs         // Candid exposed functions
   models/

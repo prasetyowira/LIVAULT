@@ -28,12 +28,17 @@
 
 ---
 
+## READ THIS
+- all base directory for backend are `src/frontend/`
+- if any docs already prefixed `src/frontend/`, no need to append. eg: `src/frontend/component` is correct
+- if `src/**` change it to `src/frontend/**`, eg: `src/router.tsx` will become `src/frontend/router.tsx`
+
 ## Phase 0 — Project Scaffolding (Day 0-1)
 | # | Task | Deliverables | Notes |
 |---|------|--------------|-------|
-| 0.1 | Initialise Vite React-TS template in `frontend/` | `pnpm create vite` scaffold, `tsconfig.json` | Use pnpm workspaces; alias @/ ➜ `src/` |
+| 0.1 | Initialise Vite React-TS template in `src/frontend/` | `pnpm create vite` scaffold, `tsconfig.json` | Use pnpm workspaces; alias @/ ➜ `src/frontend/` |
 | 0.2 | Add core deps: React 18, Redux Toolkit, RTK Query, Tailwind, dfinity pkgs | `package.json` passes `pnpm i` | Match versions in *Target stack* |
-| 0.3 | Tailwind setup + brand theme tokens | `tailwind.config.ts`, `src/index.css` | Use tokens from branding.md |
+| 0.3 | Tailwind setup + brand theme tokens | `tailwind.config.ts`, `src/frontend/index.css` | Use tokens from branding.md |
 | 0.4 | Configure `dfx.json` asset canister + vite `base` path | `dfx.json` in repo root | `output_env_file = .env` for backend IDs |
 | 0.5 | ESLint + Prettier + Husky pre-commit | `.eslintrc`, `.prettierrc` | Extend @typescript-eslint/recommended |
 
