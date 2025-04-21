@@ -87,4 +87,20 @@ pub fn remove_content(internal_id: u64, principal_id: Principal) -> Result<(), V
     Ok(())
 }
 
+/// Updates an existing content item.
+/// Assumes the internal ID and principal ID do not change during update.
+pub fn update_content(internal_id: u64, updated_item: VaultContentItem) -> Result<(), VaultError> {
+   let storable_item = Cbor(updated_item);
+
+   CONTENT_MAP.with(|map_ref| {
+       let mut map = map_ref.borrow_mut();
+       if map.contains_key(&internal_id) {
+           map.insert(internal_id, storable_item);
+           Ok(())
+       } else {
+           Err(VaultError::NotFound(format!("Content item with internal ID {} not found for update", internal_id)))
+       }
+   })
+}
+
 // TODO: Add function to update content item (if needed), ensuring secondary index is handled. 

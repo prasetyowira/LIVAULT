@@ -75,33 +75,24 @@ pub fn cron_or_admin_guard() -> Result<(), String> {
 /// Consider alternative designs if performance is critical.
 pub fn owner_guard(vault_id: VaultId) -> Result<(), String> {
     let caller = ic_caller();
-    let vault_key = Cbor(vault_id.clone());
-    storage::VAULT_CONFIGS.with(|map_ref| {
-        let map = map_ref.borrow();
-        match map.get(&vault_key) {
-            Some(config_cbor) => {
-                let config: VaultConfig = config_cbor.0;
-                if config.owner == caller {
-                    Ok(())
-                } else {
-                    Err(format!("Caller {} is not the owner of vault {}", caller, vault_id))
-                }
+    match storage::get_vault_config(&vault_id) {
+        Some(config) => {
+            if config.owner == caller {
+                Ok(())
+            } else {
+                Err(format!("Caller {} is not the owner of vault {}", caller, vault_id))
             }
-            None => Err(format!("Vault {} not found for owner check", vault_id)),
         }
-    })
+        None => Err(format!("Vault {} not found for owner check", vault_id)),
+    }
 }
 
 /// Guard: Checks if the caller is either the owner or a *verified* designated heir.
 pub fn owner_or_heir_guard(vault_id: VaultId) -> Result<(), String> {
     let caller = ic_caller();
-    let vault_key = Cbor(vault_id.clone());
 
     // 1. Check if caller is the owner
-    match storage::VAULT_CONFIGS.with(|map_ref| {
-        let map = map_ref.borrow();
-        map.get(&vault_key).map(|c| c.0)
-    }) {
+    match storage::get_vault_config(&vault_id) {
         Some(config) => {
             if config.owner == caller {
                 return Ok(());
@@ -112,24 +103,10 @@ pub fn owner_or_heir_guard(vault_id: VaultId) -> Result<(), String> {
     }
 
     // 2. Check if caller is a verified heir
-    let is_verified_heir = storage::MEMBERS.with(|map_ref| {
-        let map = map_ref.borrow();
-        // Define the range for the specific vault_id
-        let range_start = (vault_id.clone(), Principal::min_id());
-        let range_end = (vault_id.clone(), Principal::max_id());
-
-        for ((_v_id, principal), member_cbor) in map.range(range_start..=range_end) {
-            if principal == caller {
-                let member: VaultMember = member_cbor.0.clone();
-                if member.role == Role::Heir && member.status == MemberStatus::Verified {
-                    return true; // Found caller as a verified heir
-                }
-                // Since keys are unique, no need to check further for this caller
-                break;
-            }
-        }
-        false // Caller is not a verified heir for this vault
-    });
+    let is_verified_heir = storage::get_member(&vault_id, &caller)
+        .map_or(false, |member| {
+            member.role == Role::Heir && member.status == MemberStatus::Verified
+        });
 
     if is_verified_heir {
         Ok(())
@@ -146,12 +123,7 @@ pub fn owner_or_heir_guard(vault_id: VaultId) -> Result<(), String> {
 pub fn member_guard(vault_id: VaultId) -> Result<(), String> {
     let caller = ic_caller();
 
-    let is_member = storage::MEMBERS.with(|map_ref| {
-        let map = map_ref.borrow();
-        // Direct lookup using the composite key
-        let key = (vault_id.clone(), caller);
-        map.contains_key(&key)
-    });
+    let is_member = storage::is_member(&vault_id, &caller);
 
     if is_member {
         Ok(())
@@ -168,18 +140,10 @@ pub fn member_guard(vault_id: VaultId) -> Result<(), String> {
 pub fn role_guard(vault_id: VaultId, required_role: Role) -> Result<(), String> {
     let caller = ic_caller();
 
-    let has_role = storage::MEMBERS.with(|map_ref| {
-        let map = map_ref.borrow();
-        // Direct lookup using the composite key
-        let key = (vault_id.clone(), caller);
-        match map.get(&key) {
-            Some(member_cbor) => {
-                let member: VaultMember = member_cbor.0;
-                member.role == required_role // && member.status == MemberStatus::Verified // Optional status check
-            }
-            None => false, // Caller is not a member of this vault
-        }
-    });
+    let has_role = storage::get_member(&vault_id, &caller)
+        .map_or(false, |member| {
+            member.role == required_role // Optional: && member.status == MemberStatus::Verified
+        });
 
     if has_role {
         Ok(())

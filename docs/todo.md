@@ -117,9 +117,9 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/payment_service.rs`: Add function to handle ChainFusion payments (initiate swap, verify completion).
     *   `services/payment_service.rs`: Add function to get payment session status.
     *   `services/payment_service.rs`: Implement actual billing log query (e.g., get history).
-    *   `storage/mod.rs`: Add modules for vault_configs, members, audit_logs, etc., if fully modularizing storage.
+    *   `storage/mod.rs`: **[In Progress]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
     *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
-    *   `storage/content.rs`: Add function to update content item (handle secondary index).
+    *   `storage/content.rs`: **[X]** Add function to update content item (handle secondary index).
     *   `storage/uploads.rs`: Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
     *   `storage/structures.rs`: **[X]** Refactored `VAULT_MEMBERS` key to `(VaultId, PrincipalId)`.
     *   `models/common.rs`: **[X]** Added `MemberStatus::Verified`.
