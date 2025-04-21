@@ -5,6 +5,10 @@ use getrandom::register_custom_getrandom;
 use std::cell::RefCell;
 use std::time::Duration;
 use ic_cdk_timers::set_timer;
+use ic_cdk::api::management_canister::main::raw_rand;
+use candid::Principal;
+use crate::models::init::InitArgs;
+use crate::storage::config as storage_config;
 
 pub mod api;
 pub mod error;
@@ -30,11 +34,18 @@ fn _restart_rng() {
 }
 
 #[ic_cdk::init]
-fn init() {
+fn init(args: InitArgs) {
     // Setup panic hook for better error reporting
     std::panic::set_hook(Box::new(|info| {
         ic_cdk::println!("Canister panicked: {:?}", info);
     }));
+    // Initialize configuration from arguments
+    storage_config::init_config(
+        args.admin_principal,
+        args.cron_principal,
+        args.min_cycles_threshold
+    );
+
     _restart_rng();
 
     ic_cdk::println!("LiVault backend canister initialized.");

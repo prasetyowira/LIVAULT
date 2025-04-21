@@ -6,6 +6,7 @@ use crate::models::vault_invite_token::VaultInviteToken;
 use crate::models::vault_member::VaultMember;
 use crate::models::billing::BillingEntry;
 use crate::models::audit_log::AuditLogEntry;
+use crate::models::common::{VaultId, PrincipalId};
 use crate::storage::memory::{
     get_audit_log_data_memory,
     get_audit_log_index_memory,
@@ -46,8 +47,8 @@ thread_local! {
         StableBTreeMap::init(get_vault_config_memory())
     );
 
-    /// Vault Members: Key = member_key (e.g., "member:{vault_id}:{member_id}"), Value = VaultMember
-    pub static VAULT_MEMBERS: RefCell<StableBTreeMap<StorableString, StorableVaultMember, Memory>> = RefCell::new(
+    /// Vault Members: Key = (VaultId, PrincipalId), Value = VaultMember
+    pub static VAULT_MEMBERS: RefCell<StableBTreeMap<(VaultId, PrincipalId), StorableVaultMember, Memory>> = RefCell::new(
         StableBTreeMap::init(get_vault_members_memory())
     );
 
@@ -99,12 +100,6 @@ thread_local! {
 }
 
 // --- Key Generation Helpers (as per backend.architecture.md) ---
-
-/// Generates a key for the VAULT_MEMBERS map.
-/// Format: "member:{vault_id}:{member_id}"
-pub fn create_member_key(vault_id: &str, member_id: &str) -> String {
-    format!("member:{}:{}", vault_id, member_id)
-}
 
 /// Generates a key for the AUDIT_LOGS map.
 /// Format: "audit:{vault_id}"

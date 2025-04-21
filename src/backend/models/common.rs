@@ -50,6 +50,7 @@ pub enum InviteStatus {
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum MemberStatus {
     Pending, // Invite claimed, but maybe needs confirmation?
+    Verified, // Member confirmed/verified (e.g., after claiming invite)
     Active,
     Revoked, // Access revoked by master
 } 
