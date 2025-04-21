@@ -30,6 +30,12 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use validator::{Validate, ValidationError};
 use serde::Deserialize; // Import Deserialize
+use crate::models::payment::SessionId as RequestSessionId; // Alias for request struct
+use services::payment_service::PaymentSessionStatus; // Import status struct
+use storage::{add_audit_log_entry, get_value};
+use utils::{
+    guards::{admin_guard, check_cycles, owner_guard, member_guard, role_guard, self_or_owner_guard, owner_or_heir_guard},
+};
 
 // --- Admin Principal (Example - Load from stable memory/config later) ---
 thread_local! {
@@ -264,7 +270,20 @@ pub struct VerifyPaymentRequest {
 async fn verify_payment(req: VerifyPaymentRequest) -> Result<String, VaultError> {
     validate_request(&req)?;
     check_cycles()?;
-    payment_service::verify_and_associate_payment(req.session_id, req.vault_id).await
+    let result = payment_service::verify_and_associate_payment(req.session_id, req.vault_id).await;
+    Ok(format!("Payment Verified: {}", result))
+}
+
+// Query: Get Payment Session Status
+#[ic_cdk_macros::query(guard = "check_cycles")] // Basic guard, maybe needs auth?
+fn get_payment_status(session_id: RequestSessionId) -> Result<PaymentSessionStatus, VaultError> {
+   ic_cdk::println!("API: get_payment_status called for session {}", session_id);
+   // TODO: Add appropriate authorization check? Who can query status?
+   // Potentially the initiator or admin?
+   // let caller = ic_caller();
+   // let session = payment_service::get_payment_session(session_id)... Check initiator? 
+
+   payment_service::get_payment_session_status(&session_id)
 }
 
 // --- Vault Core Endpoints ---

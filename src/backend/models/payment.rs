@@ -9,8 +9,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use ic_stable_structures::{storable::Bound, Storable};
 use std::borrow::Cow;
-
-pub type SessionId = String;
 pub type E8s = u64; // Amount in 10^-8 ICP
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
@@ -34,7 +32,7 @@ impl Default for PayState { fn default() -> Self { PayState::Issued } }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct PaymentSession {
-    pub session_id: SessionId,       // ULID
+    pub session_id: PrincipalId,
     pub pay_to_account_id: String,   // ICP AccountIdentifier (derived from this canister + subaccount)
     pub amount_e8s: E8s,             // Amount expected in ICP e8s
     pub vault_plan: String,           // e.g., "Standard", "Premium"

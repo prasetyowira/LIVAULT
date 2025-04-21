@@ -7,7 +7,7 @@ use crate::{
         vault_service, // To potentially trigger vault status change
     },
     storage::payment::{store_payment_session, with_payment_session, with_payment_session_mut}, // Use storage module helpers
-    utils::crypto::generate_ulid, // For SessionId
+    utils::crypto::generate_unique_principal, // For SessionId
     adapter::chainfusion_adapter::{initialize_chainfusion_swap, check_chainfusion_swap_status, ChainFusionInitRequest, ChainFusionSwapStatus},
     services::vault_service, // Fix vault_service import
 };
@@ -17,9 +17,13 @@ use std::time::Duration;
 use ic_ledger_types::{AccountIdentifier, Subaccount, AccountBalanceArgs, DEFAULT_SUBACCOUNT, transfer, TransferArgs, Memo, Tokens};
 use crate::utils::account_identifier::AccountIdentifier;
 use crate::adapter::chainfusion_adapter;
-use crate::adapter::ledger_adapter; // Assuming ledger adapter exists
+use crate::adapter::ledger_adapter; // Placeholder import
 use ic_cdk::api::caller as ic_caller;
 use crate::models::billing::BillingEntry;
+use ic_cdk::api::management_canister::main::raw_rand;
+use crate::models::payment::PayState; // Import PayState
+use crate::models::common::VaultStatus; // Needed for setting status
+use crate::storage; // Import storage module for billing call
 
 // Constants
 const PAYMENT_SESSION_TIMEOUT_SECONDS: u64 = 30 * 60; // 30 minutes
@@ -34,14 +38,12 @@ pub struct PaymentInitRequest {
 }
 
 // --- Helper: Derive Subaccount from Session ID ---
-fn derive_subaccount_from_session(session_id: &SessionId) -> Subaccount {
-    // Use the first 32 bytes of the ULID string as entropy for the subaccount
-    // Ensure the input is always 32 bytes
-    let mut entropy = [0u8; 32];
-    let bytes = session_id.as_bytes();
-    let len = bytes.len().min(32);
-    entropy[..len].copy_from_slice(&bytes[..len]);
-    Subaccount(entropy)
+// Derives a unique random subaccount.
+async fn derive_random_subaccount() -> Result<Subaccount, VaultError> {
+    let (rand_bytes,): ([u8; 32],) = raw_rand().await.map_err(|(code, msg)| {
+        VaultError::InternalError(format!("Failed to get random bytes for subaccount: [{:?}] {}", code, msg))
+    })?;
+    Ok(Subaccount(rand_bytes))
 }
 
 // --- Service Functions ---
@@ -59,12 +61,12 @@ pub async fn initialize_payment_session(
     req: PaymentInitRequest,
     caller: PrincipalId,
 ) -> Result<PaymentSession, VaultError> {
-    let session_id = generate_ulid().await;
+    let session_id = generate_unique_principal().await?;
     let current_time = time();
     let expires_at = current_time + Duration::from_secs(PAYMENT_SESSION_TIMEOUT_SECONDS).as_nanos() as u64;
 
     let vault_canister_principal = api::id();
-    let subaccount = derive_subaccount_from_session(&session_id);
+    let subaccount = derive_random_subaccount().await?; // Use random subaccount
     let pay_to_account = AccountIdentifier::new(&vault_canister_principal, &subaccount);
 
     let mut session = PaymentSession {
@@ -147,7 +149,7 @@ pub async fn initialize_payment_session(
 /// # Returns
 /// * `Result<String, VaultError>` - Confirmation message (e.g., "Payment Confirmed") or an error.
 pub async fn verify_payment(
-    session_id: &SessionId,
+    session_id: &PrincipalId,
     vault_id: &VaultId, // Used to update vault status upon confirmation
 ) -> Result<String, VaultError> {
     let current_time = time();
@@ -212,21 +214,38 @@ pub async fn verify_payment(
             store_payment_session(session.clone());
 
             // Update Vault Status (Placeholder: Needs actual VaultService call)
-            // TODO: Integrate with VaultService to update vault status
-            ic_cdk::print(format!(
-                "✅ INFO: Vault {} status should be updated to NEED_SETUP (via VaultService).",
-                vault_id
-            ));
-            // vault_service::set_vault_status(vault_id, VaultStatus::NeedSetup).await?;
+            ic_cdk::println!("INFO: Attempting to update vault {} status to NeedSetup...", vault_id);
+            match vault_service::set_vault_status(vault_id.clone(), VaultStatus::NeedSetup).await {
+                Ok(_) => ic_cdk::println!("INFO: Vault status updated successfully."),
+                Err(e) => {
+                    // Log error but don't necessarily fail the entire verification?
+                    // The payment is verified, but vault update failed.
+                    ic_cdk::eprintln!("ERROR: Failed to update vault status for {}: {:?}. Payment session {} remains Confirmed.", vault_id, e, session_id);
+                    // Consider how to handle this - maybe retry later? For now, log and continue.
+                }
+            }
 
             // Add Billing Entry (Placeholder: Needs actual BillingService call)
-            // TODO: Integrate with BillingService to add an entry
-            ic_cdk::print(format!(
-                "✅ INFO: Billing entry should be added for vault {} (Tx: {}, Method: {:?}).",
-                vault_id, tx_hash, session.method
-            ));
-            // let billing_entry = BillingEntry { ... };
-            // crate::storage::billing::add_billing_entry(billing_entry)?;
+            ic_cdk::println!("INFO: Adding billing entry for vault {}...", vault_id);
+            let billing_entry = BillingEntry {
+                timestamp: current_time,
+                vault_id: vault_id.clone(), // Assuming BillingEntry takes Principal
+                payment_method: session.method,
+                amount_icp_e8s: Some(session.amount_e8s),
+                original_token: session.chainfusion_source_token.clone(),
+                original_amount: session.chainfusion_source_amount, 
+                transaction_id: Some(tx_hash.clone()),
+                swap_tx_hash: None, // Populate if CF payment verification provides it
+                description: format!("Vault creation/plan: {}", session.vault_plan),
+            };
+            match storage::add_billing_entry(billing_entry) {
+                Ok(log_index) => ic_cdk::println!("INFO: Billing entry added at index {}."),
+                Err(e) => {
+                    // Log error, but payment is already verified.
+                    ic_cdk::eprintln!("ERROR: Failed to add billing entry for vault {}: {}. Payment session {} remains Confirmed.", vault_id, e, session_id);
+                    // Consider implications - payment confirmed but not logged.
+                }
+            }
 
             Ok(format!("Payment Confirmed (Tx: {})", tx_hash))
         }
@@ -248,26 +267,57 @@ pub async fn verify_payment(
 
 /// Specific logic to verify ICP direct payments against the ledger.
 async fn verify_icp_ledger_payment(session: &PaymentSession) -> Result<String, VaultError> {
-    ic_cdk::print(format!(
-        "🔍 DEBUG: Verifying ICP Ledger for session {} (Amount: {}, To Account: {})",
-        session.session_id, session.amount_e8s, session.pay_to_account_id
-    ));
+    ic_cdk::println!(
+        "INFO: Verifying ICP ledger payment for session {} to account {}",
+        session.session_id,
+        session.pay_to_account_id
+    );
 
-    let ledger_canister_id = Principal::from_text(ICP_LEDGER_CANISTER_ID_STR).expect("Invalid Ledger ID");
-    let target_account = AccountIdentifier::from_hex(&session.pay_to_account_id)
-        .map_err(|_| VaultError::InternalError("Invalid account identifier stored in session".to_string()))?;
+    let ledger_canister_id = Principal::from_text(ICP_LEDGER_CANISTER_ID_STR)
+        .map_err(|_| VaultError::InternalError("Invalid ICP Ledger Canister ID configured".to_string()))?;
 
-    // --- PLACEHOLDER: Replace with actual ledger query --- 
-    // TODO: Implement robust ledger query (e.g., `query_blocks` or `get_account_transactions` if available)
-    // Checking balance is NOT sufficient proof of payment for a specific session.
-    let payment_found_and_valid = true; // Simulate success
-    let tx_hash_placeholder = format!("simulated_icp_tx_{}", session.session_id);
-    // --- END PLACEHOLDER --- 
+    // Parse the pay_to_account_id string back into an AccountIdentifier
+    let account: AccountIdentifier = session.pay_to_account_id.parse()
+        .map_err(|e| VaultError::InternalError(format!("Failed to parse payment account identifier '{}': {}", session.pay_to_account_id, e)))?;
 
-    if payment_found_and_valid {
-        Ok(tx_hash_placeholder)
-    } else {
-        Err(VaultError::PaymentError("ICP payment not confirmed on ledger yet.".to_string()))
+    let args = AccountBalanceArgs { account };
+
+    ic_cdk::println!("INFO: Querying balance for account: {}", account.to_hex());
+
+    // Call the ledger canister's account_balance method
+    let balance_result: Result<(Tokens,), _> = ic_cdk::call(ledger_canister_id, "account_balance", (args,)).await;
+
+    match balance_result {
+        Ok((balance,)) => {
+            ic_cdk::println!(
+                "INFO: Account {} balance: {} e8s. Required: {} e8s.",
+                account.to_hex(),
+                balance.e8s(),
+                session.amount_e8s
+            );
+            // Check if the balance is sufficient
+            if balance.e8s() >= session.amount_e8s {
+                // Payment confirmed. We don't get a specific TX hash this way,
+                // so generate a confirmation string.
+                // TODO: Refine ICP ledger verification to potentially use the provided Tx hash
+                // (This isn't easily possible with just account_balance. Would need user input
+                // or a more complex query if the ledger supported it).
+                let confirmation_detail = format!("balance_confirmed_{}", balance.e8s());
+                Ok(confirmation_detail)
+            } else {
+                Err(VaultError::PaymentError("Payment amount not found on ledger.".to_string()))
+            }
+        }
+        Err((code, msg)) => {
+            ic_cdk::eprintln!(
+                "ERROR: Failed to query account balance from ICP ledger ({:?}): {}",
+                code, msg
+            );
+            Err(VaultError::PaymentError(format!(
+                "Ledger query failed: {}",
+                msg
+            )))
+        }
     }
 }
 
@@ -322,51 +372,73 @@ async fn verify_chainfusion_payment(session: &PaymentSession) -> Result<String, 
     }
 }
 
-/// Closes a payment session, typically after the associated action (e.g., vault creation) is complete.
-///
-/// # Arguments
-/// * `session_id` - The ID of the payment session to close.
-///
-/// # Returns
-/// * `Result<(), VaultError>` - Success or an error.
-pub fn close_payment_session(session_id: &SessionId) -> Result<(), VaultError> {
-     ic_cdk::print(format!("🔒 INFO: Closing payment session {}.", session_id));
+/// Closes a payment session, typically after it has been successfully used or expired.
+pub fn close_payment_session(session_id: &PrincipalId) -> Result<(), VaultError> {
+    let current_time = time();
     with_payment_session_mut(session_id, |session| {
+        // Only close sessions that are Confirmed or Expired
         match session.state {
-            PayState::Confirmed => {
+            PayState::Confirmed | PayState::Expired => {
                 session.state = PayState::Closed;
-                session.closed_at = Some(time());
-                ic_cdk::print(format!("✅ INFO: Payment session {} successfully closed.", session_id));
+                session.closed_at = Some(current_time);
+                ic_cdk::println!("INFO: Payment session {} closed.", session_id);
                 Ok(())
-            },
+            }
             PayState::Closed => {
-                 ic_cdk::print(format!("⚠️ WARN: Payment session {} already closed.", session_id));
-                 Ok(()) // Idempotent
-            },
-            _ => {
-                ic_cdk::eprintln!("🔥 ERROR: Cannot close payment session {} in state {:?}.", session_id, session.state);
+                // Already closed, idempotent operation
+                Ok(())
+            }
+            PayState::Issued => {
                 Err(VaultError::PaymentError(format!(
-                    "Cannot close payment session in state {:?}",
-                    session.state
+                    "Cannot close active payment session {}. Verify or let expire first.",
+                    session_id
+                )))
+            }
+            PayState::Error => {
+                Err(VaultError::PaymentError(format!(
+                    "Cannot close payment session {} in error state.",
+                    session_id
                 )))
             }
         }
     })
 }
 
+/// Placeholder for listing billing entries (admin only)
+// TODO: Implement actual billing log query using storage::billing
+pub async fn list_billing_entries(offset: usize, limit: usize) -> Result<(Vec<BillingEntry>, u64), VaultError> {
+    // Use storage::billing::query_billing_entries or similar
+    let entries = crate::storage::billing::query_billing_entries(offset, limit);
+    let total = crate::storage::billing::BILLING_LOG.with(|log| log.borrow().len()); // Get total count
+    Ok((entries, total))
+}
+
 // TODO: Add function to handle ChainFusion payments (initiate swap, verify swap completion)
 // TODO: Add function to get payment session status
 
-// TODO: Implement actual billing log query
-pub async fn list_billing_entries(offset: u64, limit: usize) -> Result<(Vec<BillingEntry>, u64), VaultError> {
-    ic_cdk::print(format!(
-        "🧾 INFO: Listing billing entries (offset: {}, limit: {}). Placeholder implementation.",
-        offset,
-        limit
-    ));
-    // Placeholder: Return empty list and zero total
-    // Replace with actual stable log query
-    Ok((Vec::new(), 0))
+// --- Function to Get Session Status ---
+
+/// Represents the publicly queryable status of a payment session.
+#[derive(Clone, Debug, candid::CandidType, serde::Deserialize)]
+pub struct PaymentSessionStatus {
+   pub session_id: PrincipalId,
+   pub state: PayState,
+   pub error_message: Option<String>,
+   pub verified_at: Option<Timestamp>,
+   pub closed_at: Option<Timestamp>,
+}
+
+/// Retrieves the current status of a payment session.
+pub fn get_payment_session_status(session_id: &PrincipalId) -> Result<PaymentSessionStatus, VaultError> {
+   with_payment_session(session_id, |session| {
+       Ok(PaymentSessionStatus {
+           session_id: session.session_id.clone(),
+           state: session.state,
+           error_message: session.error_message.clone(),
+           verified_at: session.verified_at,
+           closed_at: session.closed_at,
+       })
+   })
 }
 
 // --- Internal Helpers ---

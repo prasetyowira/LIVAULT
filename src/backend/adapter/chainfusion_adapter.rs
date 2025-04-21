@@ -1,4 +1,5 @@
 use crate::error::VaultError;
+use crate::models::common::{PrincipalId, Timestamp};
 use crate::models::payment::{E8s, SessionId, PayMethod};
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,7 @@ const HTTP_OUTCALL_CYCLES: u128 = 100_000_000; // Cycles for the HTTP outcall
 
 #[derive(CandidType, Serialize, Deserialize, Debug, Clone)]
 pub struct ChainFusionInitRequest {
-    pub session_id: SessionId,
+    pub session_id: PrincipalId,
     pub target_principal: String, // The principal (derived subaccount) to receive ICP
     pub target_amount_icp_e8s: E8s,
     // Potentially add user's desired source token if known, e.g., "ETH", "BTC"

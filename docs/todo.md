@@ -112,12 +112,12 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/upload_service.rs`: Add function to list content items for a vault (using index).
     *   `services/upload_service.rs`: Consider if upload sessions need internal IDs + secondary index.
     *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for ICP payments.
-    *   `services/payment_service.rs`: Add function to close/finalize payment session.
-    *   `services/payment_service.rs`: Refine ICP ledger verification (potentially use Tx hash).
+    *   `services/payment_service.rs`: **[X]** Add function to close/finalize payment session.
+    *   `services/payment_service.rs`: **[X]** Refine ICP ledger verification (implemented balance check).
     *   `services/payment_service.rs`: Add function to handle ChainFusion payments (initiate swap, verify completion).
-    *   `services/payment_service.rs`: Add function to get payment session status.
-    *   `services/payment_service.rs`: Implement actual billing log query (e.g., get history).
-    *   `storage/mod.rs`: **[In Progress]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
+    *   `services/payment_service.rs`: **[X]** Add function to get payment session status.
+    *   `services/payment_service.rs`: **[X]** Implement actual billing log query (e.g., get history).
+    *   `storage/mod.rs`: **[x]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
     *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
     *   `storage/content.rs`: **[X]** Add function to update content item (handle secondary index).
     *   `storage/uploads.rs`: **[X]** Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).

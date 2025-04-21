@@ -303,3 +303,37 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   **Step 6 (Service Logic - Lookup/Mod/Del):** Completed updating lookup/modification logic in `invite_service.rs` (`claim_existing_invite`, `revoke_invite_token`). Other services (`vault_service`, `upload_service`) still need updates for lookup/delete operations based on Principal IDs.
 *   **Step 7 (API Layer):** Completed updating function signatures and request/response structs in `api.rs` to use Principal-based ID types.
 *   **Next:** Review changes, address TODOs, compile, and test. 
+
+---
+
+## 2024-07-27: TODO Cleanup & Storage Documentation
+
+**Overview:** Addressed several TODO items identified in the codebase and documentation, focusing on guards, configuration, and storage layer modularization. Created documentation for the storage layer.
+
+**Key Components Implemented/Updated:**
+1.  **Guards (`src/backend/utils/guards.rs`):**
+    *   Implemented `owner_or_heir_guard`, `member_guard`, and `role_guard` using efficient lookups/iteration against the `MEMBERS` map.
+    *   Made `MIN_CYCLES_THRESHOLD`, `ADMIN_PRINCIPAL`, and `CRON_PRINCIPAL` configurable via `InitArgs` and stored them in `StableCell`s (`storage/config.rs`).
+    *   Updated guards to use the configured values.
+2.  **Models (`src/backend/models/`):**
+    *   Added `Verified` status to `MemberStatus` enum (`common.rs`).
+    *   Created `InitArgs` struct (`init.rs`).
+    *   Created `UploadSession` struct and `UploadStatus` enum (`upload_session.rs`).
+3.  **Storage (`src/backend/storage/`):**
+    *   **Modularization:** Created dedicated modules for `members`, `vault_configs`, `audit_logs`, `metrics`, `billing`, and `content_index`, moving definitions and helper functions out of `structures.rs`.
+    *   **Members:** Refactored `MEMBERS` map key to `(VaultId, PrincipalId)` for efficient querying.
+    *   **Content:** Added `update_content` function.
+    *   **Uploads:** Added `UPLOAD_CHUNKS_MAP` and functions (`save_chunk`, `get_chunk`, `delete_chunks`) for managing chunk data.
+    *   **Audit Logs:** Added `compact_log` function.
+    *   Updated `mod.rs` to reflect the new module structure and re-exports.
+4.  **Initialization (`src/backend/lib.rs`):**
+    *   Updated `init` function to accept `InitArgs` and initialize configuration storage.
+5.  **Documentation (`docs/`):**
+    *   Created comprehensive documentation for the storage layer in `docs/storage.md`.
+    *   Updated `docs/todo.md` to mark completed items and refine descriptions.
+
+**Dependencies:** No new external dependencies.
+
+**Relevant Docs:**
+*   [`docs/storage.md`](mdc:docs/storage.md) (New)
+*   [`docs/todo.md`](mdc:docs/todo.md) (Updated) 
