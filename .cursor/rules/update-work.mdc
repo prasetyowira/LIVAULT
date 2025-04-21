@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: true
+alwaysApply: false
 ---
 When called, you should review all the progress and enhancements in [progress.md](mdc:docs/progress.md) and do the following tasks:
 

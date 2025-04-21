@@ -1,0 +1,19 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Progress Tracking
+
+Progress tracking for development activities is documented in specific files.
+
+## Tracking Files
+
+- **Backend Progress Tracking:** [plans/backend.tracking.md](mdc:plans/backend.tracking.md)
+- **Frontend Progress Tracking:** [plans/frontend.tracking.md](mdc:plans/frontend.tracking.md)
+
+Refer to these files for logs of completed tasks, encountered issues, and debugging notes for each area.
+
+## Updating Progress
+
+Remember to follow the process outlined in the [update-progress](mdc:rule:update-progress) rule for logging your work.

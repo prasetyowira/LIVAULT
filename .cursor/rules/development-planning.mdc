@@ -1,0 +1,15 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Development Planning
+
+Active development plans for different parts of the project are maintained in separate files.
+
+## Current Plans
+
+- **Backend Development Plan:** [plans/backend.plan.md](mdc:plans/backend.plan.md)
+- **Frontend Development Plan:** [plans/frontend.plan.md](mdc:plans/frontend.plan.md)
+
+Consult these files for current tasks, priorities, and development strategies for each area.

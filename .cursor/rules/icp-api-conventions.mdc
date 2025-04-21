@@ -1,6 +1,6 @@
 ---
 description: Best practices and naming conventions for API development in Rust-based Internet Computer (ICP) canisters
-globs: *.rs,Cargo.toml
+globs: 
 alwaysApply: false
 ---
 ---

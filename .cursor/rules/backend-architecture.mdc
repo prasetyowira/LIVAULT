@@ -1,0 +1,21 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Backend Architecture
+
+This rule provides a high-level overview and links to the detailed backend architecture documentation.
+
+## Detailed Documentation
+
+For a comprehensive understanding of the backend architecture, including components, data flow, and design decisions, please refer to on base project:
+
+- [plans/backend.architecture.md](mdc:plans/backend.architecture.md)
+
+json schema file pattern: `*.schema.json` in @plans
+
+## Key Aspects (from documentation)
+
+- Review the document for details on canisters, inter-canister communication, state management, APIs, and security considerations specific to the backend.
+- Adhere to the conventions defined in [icp-api-conventions](mdc:rule:icp-api-conventions) when working on backend APIs.

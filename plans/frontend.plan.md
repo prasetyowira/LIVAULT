@@ -19,7 +19,7 @@
 > - [prd.md](prd.md)
 > - [user.journey.md](user.journey.md)
 > - ICP Docs (*Existing-frontend*, *Authentication*)
-> - Wireframes: owner/heir/witness/admin
+> - Wireframes: owner/heir/witness/admin on `wireframe/`
 > - Rules: *frontend/react*, *frontend/tailwind*, *icp-api-conventions*.
 
 > **Change‑log 2025‑04‑20 20:36**  

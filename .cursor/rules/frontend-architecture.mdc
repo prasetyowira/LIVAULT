@@ -1,0 +1,28 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Frontend Architecture
+
+This rule provides a high-level overview and links to the detailed frontend architecture documentation.
+
+## Detailed Documentation
+
+For a comprehensive understanding of the frontend architecture, including components, state management (Redux), styling (Tailwind CSS), routing, and API interactions (React Query), please refer to on base project:
+
+- [plans/frontend.architecture.md](mdc:plans/frontend.architecture.md)
+- @plans/branding.md
+- wireframe in @wireframe/
+- @plans/sitemap.md
+
+## Key Aspects & Related Rules
+
+- Review the document for details on the chosen frameworks, libraries, component structure, state management strategy, and UI/UX principles.
+- Adhere to the relevant frontend rules, such as:
+    - [frontend/react](mdc:rule:frontend/react)
+    - [frontend/tailwind](mdc:rule:frontend/tailwind)
+    - [frontend/react-query-general-best-practices](mdc:rule:frontend/react-query-general-best-practices)
+    - [frontend/redux-toolkit-best-practices](mdc:rule:frontend/redux-toolkit-best-practices)
+    - [frontend/typescript-type-safety](mdc:rule:frontend/typescript-type-safety)
+    - [frontend/code-organization-rules](mdc:rule:frontend/code-organization-rules)

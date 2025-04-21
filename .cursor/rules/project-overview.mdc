@@ -1,0 +1,60 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Project Overview
+
+This project is Livault, a secure digital vault.
+
+## Key Documentation
+on base project
+- **Project Index & Core Modules:** Refer to [plans/readme.md](mdc:plans/readme.md) for the main project index and descriptions of core modules.
+- **Product Requirements:** The Product Requirements Document (PRD) is located at [plans/prd.md](mdc:plans/prd.md).
+- **Technical Documentation:** General technical aspects are documented in [plans/tech.docs.md](mdc:plans/tech.docs.md).
+- **User Overview:** See [plans/OVERVIEW.USER.md](mdc:plans/OVERVIEW.USER.md) for user-centric details.
+
+## Core Principles
+
+Remember to follow the engineering approach outlined in the [read_this_first](mdc:rule:read_this_first) rule, emphasizing incremental changes and verification.
+
+## Project Directory Structure
+
+```
+.
+├── .cursor/         # Cursor AI configuration and rules
+├── .git/            # Git repository data
+├── .github/         # GitHub specific files (workflows, etc.)
+├── assets/          # Static assets (images, fonts, etc.)
+├── docs/            # Project documentation
+├── plans/           # Planning documents (architecture, PRD, tracking)
+├── src/             # Source code
+│   ├── backend/       # Backend canister code (Rust)
+│   └── frontend/      # Frontend application code (React/TypeScript)
+├── target/          # Rust build artifacts
+├── wireframe/       # Wireframe designs
+├── .gitignore       # Git ignore configuration
+├── Cargo.lock       # Rust dependency lock file
+├── Cargo.toml       # Rust project manifest (workspace)
+├── dfx.json         # DFINITY Canister SDK configuration
+├── figma-swatches.csv # Design color swatches
+├── README.md        # Main project README
+├── tailwind.config.js # Tailwind CSS configuration
+```
+
+### Backend Directory Structure (`src/backend`)
+
+```
+src/backend/
+├── adapter/           # Adapters for external services/interfaces
+├── api.rs             # Main API endpoint definitions
+├── error.rs           # Custom error types
+├── lib.rs             # Main library entry point, canister lifecycle
+├── metrics.rs         # Metrics collection/exposure
+├── models/            # Data structures and types
+├── services/          # Business logic implementation
+├── storage/           # Data persistence logic
+├── utils/             # Utility functions and helpers
+├── Cargo.toml         # Backend canister dependencies
+└── rust-toolchain.toml # Specifies the Rust toolchain version
+```

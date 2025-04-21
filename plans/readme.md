@@ -55,12 +55,12 @@ LiVault is designed to preserve digital legacies by combining:
 
 | File | Role / Section |
 |------|----------------|
-| [owner.wireframe.md](owner.wireframe.md) | Master user flow |
-| [heir.wireframe.md](heir.wireframe.md) | Heir claim, approve, download |
-| [witness.wireframe.md](witness.wireframe.md) | Witness trigger, vault watch |
-| [admin.wireframe.md](admin.wireframe.md) | Internal dashboard, billing, logs |
-| [discovery.wireframe.md](discovery.wireframe.md) | discovery flow |
-| [landing.wireframe.md](landing.wireframe.md) | landing page for marketing |
+| [owner.wireframe.md](/wireframe/owner.wireframe.md) | Master user flow |
+| [heir.wireframe.md](/wireframe/heir.wireframe.md) | Heir claim, approve, download |
+| [witness.wireframe.md](/wireframe/witness.wireframe.md) | Witness trigger, vault watch |
+| [admin.wireframe.md](/wireframe/admin.wireframe.md) | Internal dashboard, billing, logs |
+| [discovery.wireframe.md](/wireframe/discovery.wireframe.md) | discovery flow |
+| [landing.wireframe.md](/wireframe/landing.wireframe.md) | landing page for marketing |
 
 ---
 
