@@ -51,16 +51,14 @@ pub fn remove_member(vault_id: &VaultId, principal_id: &PrincipalId) -> Option<V
 }
 
 /// Retrieves all members associated with a specific vault ID.
-/// Note: This iterates over a range and collects into a Vec, potentially memory-intensive for large vaults.
 pub fn get_members_by_vault(vault_id: &VaultId) -> Vec<VaultMember> {
     MEMBERS.with(|map_ref| {
         let map = map_ref.borrow();
-        let range_start = (*vault_id, Principal::min_id());
-        let range_end = (*vault_id, Principal::max_id());
 
-        map.range(range_start..=range_end)
-           .map(|(_key, member_cbor)| member_cbor.0) // Map to VaultMember
-           .collect() // Collect into a Vec
+        map.iter()
+            .filter(|((entry_vault_id, _principal_id), _value)| entry_vault_id == vault_id)
+            .map(|(_, member_cbor)| member_cbor.0)
+            .collect()
     })
 }
 

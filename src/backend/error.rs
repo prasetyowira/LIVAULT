@@ -8,6 +8,9 @@ pub enum VaultError {
     #[error("Not authorized: {0}")]
     NotAuthorized(String),
 
+    #[error("Object not found: {0}")]
+    NotFound(String),
+
     #[error("Vault not found: {0}")]
     VaultNotFound(String),
 

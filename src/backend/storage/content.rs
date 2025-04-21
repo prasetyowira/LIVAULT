@@ -1,9 +1,9 @@
 // src/backend/storage/content.rs
 use crate::error::VaultError;
-use crate::models::VaultContentItem;
+use crate::models::vault_content_item::VaultContentItem;
 use crate::storage::storable::Cbor;
 use crate::storage::memory::{Memory, get_content_counter_memory, get_content_items_memory, get_content_principal_idx_memory};
-use ic_stable_structures::{StableCell, StableBTreeMap, DefaultMemoryImpl};
+use ic_stable_structures::{StableCell, StableBTreeMap};
 use std::cell::RefCell;
 use candid::Principal;
 

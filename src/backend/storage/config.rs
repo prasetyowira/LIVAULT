@@ -1,14 +1,9 @@
 // src/backend/storage/config.rs
-use crate::storage::memory::{get_memory, Memory};
+use crate::storage::memory::{get_admin_principal_memory, get_cron_principal_memory, get_min_cycles_threshold_memory, Memory};
 use crate::storage::storable::Cbor; // Assuming Principal uses Cbor
 use candid::Principal;
-use ic_stable_structures::{MemoryId, StableCell};
+use ic_stable_structures::StableCell;
 use std::cell::RefCell;
-
-// Define Memory IDs for config cells (ensure these are unique)
-const ADMIN_PRINCIPAL_MEM_ID: MemoryId = MemoryId::new(25);
-const CRON_PRINCIPAL_MEM_ID: MemoryId = MemoryId::new(26);
-const MIN_CYCLES_THRESHOLD_MEM_ID: MemoryId = MemoryId::new(27);
 
 // Default values (used if init fails or cell is uninitialized)
 const DEFAULT_ADMIN_PRINCIPAL: Principal = Principal::management_canister();
@@ -18,19 +13,19 @@ const DEFAULT_MIN_CYCLES_THRESHOLD: u128 = 10_000_000_000; // 10B cycles
 thread_local! {
     /// Stable cell for the Admin Principal
     static ADMIN_PRINCIPAL: RefCell<StableCell<Cbor<Principal>, Memory>> = RefCell::new(
-        StableCell::init(get_memory(ADMIN_PRINCIPAL_MEM_ID), Cbor(DEFAULT_ADMIN_PRINCIPAL))
+        StableCell::init(get_admin_principal_memory(), Cbor(DEFAULT_ADMIN_PRINCIPAL))
             .expect("Failed to initialize admin principal stable cell")
     );
 
     /// Stable cell for the Cron Principal
     static CRON_PRINCIPAL: RefCell<StableCell<Cbor<Principal>, Memory>> = RefCell::new(
-        StableCell::init(get_memory(CRON_PRINCIPAL_MEM_ID), Cbor(DEFAULT_CRON_PRINCIPAL))
+        StableCell::init(get_cron_principal_memory(), Cbor(DEFAULT_CRON_PRINCIPAL))
             .expect("Failed to initialize cron principal stable cell")
     );
 
     /// Stable cell for the Minimum Cycles Threshold
     static MIN_CYCLES_THRESHOLD: RefCell<StableCell<u128, Memory>> = RefCell::new(
-        StableCell::init(get_memory(MIN_CYCLES_THRESHOLD_MEM_ID), DEFAULT_MIN_CYCLES_THRESHOLD)
+        StableCell::init(get_min_cycles_threshold_memory(), DEFAULT_MIN_CYCLES_THRESHOLD)
             .expect("Failed to initialize min cycles threshold stable cell")
     );
 }

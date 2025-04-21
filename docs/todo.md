@@ -95,7 +95,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/scheduler.rs`: Implement iteration over `INVITE_TOKENS` for cleanup (`purge_expired_invites`).
     *   `services/scheduler.rs`: Implement iteration over `VAULT_CONFIGS` for lifecycle checks (`check_vault_lifecycles`).
     *   `services/scheduler.rs`: Implement cleanup for `ACTIVE_UPLOADS` (in-memory or stable) (`cleanup_stale_uploads`).
-    *   `services/scheduler.rs`: Compact Audit Logs (periodic task).
+    *   `services/scheduler.rs`: **[ ]** Compact Audit Logs (periodic task - storage fn `compact_audit_log` added).
     *   `services/scheduler.rs`: Add other periodic tasks (e.g., recalculate metrics).
     *   `services/scheduler.rs`: Add any other scheduled tasks identified in docs.
     *   `services/upload_service.rs`: Store initiator `Principal` in `UploadSession` for auth checks.
@@ -120,13 +120,8 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `storage/mod.rs`: **[In Progress]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
     *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
     *   `storage/content.rs`: **[X]** Add function to update content item (handle secondary index).
-    *   `storage/uploads.rs`: Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
-    *   `storage/structures.rs`: **[X]** Refactored `VAULT_MEMBERS` key to `(VaultId, PrincipalId)`.
-    *   `models/common.rs`: **[X]** Added `MemberStatus::Verified`.
-    *   `storage/uploads.rs`: Determine appropriate memory ID for upload buffer/staging.
-    *   `storage/uploads.rs`: Update function signatures/types for `UploadSessionData` (e.g., `save_chunk`).
-    *   `storage/uploads.rs`: Add functions for managing upload chunks (likely needs separate storage).
+    *   `storage/uploads.rs`: **[X]** Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
+    *   `storage/uploads.rs`: **[X]** Determine appropriate memory ID for upload buffer/staging.
+    *   `storage/uploads.rs`: **[X]** Update function signatures/types for `UploadSessionData`.
+    *   `storage/uploads.rs`: **[X]** Add functions for managing upload chunks (needs separate storage structure).
     *   `adapter/chainfusion_adapter.rs`: (Covered by Phase 7 tasks: implement outcalls, configure URL).
-
-## AI Question
-*   **[ ] `services/upload_service.rs` / `storage/uploads.rs`:** Current `ACTIVE_UPLOADS` in `UploadService` is in-memory. Consider moving to stable storage (`ic-stable-structures::Stash` or custom map) in `storage/uploads.rs` if uploads must survive canister upgrades. Evaluate trade-offs (complexity vs. persistence).

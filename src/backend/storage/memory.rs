@@ -30,6 +30,11 @@ const UPLOAD_COUNTER_MEM_ID: MemoryId = MemoryId::new(13);
 const TOKEN_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(22);
 const CONTENT_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(23);
 const UPLOAD_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(24);
+const ADMIN_PRINCIPAL_MEM_ID: MemoryId = MemoryId::new(25);
+const CRON_PRINCIPAL_MEM_ID: MemoryId = MemoryId::new(26);
+const MIN_CYCLES_THRESHOLD_MEM_ID: MemoryId = MemoryId::new(27);
+const UPLOAD_SESSIONS_MEM_ID: MemoryId = MemoryId::new(28);
+const UPLOAD_CHUNKS_MEM_ID: MemoryId = MemoryId::new(29);
 
 // Define memory type alias
 pub type Memory = VirtualMemory<DefaultMemoryImpl>;
@@ -93,6 +98,22 @@ pub fn get_billing_log_data_memory() -> Memory {
     get_memory(BILLING_LOG_DATA_MEM_ID)
 }
 
+pub fn get_upload_session_memory() -> Memory {
+    get_memory(UPLOAD_SESSIONS_MEM_ID)
+}
+
+pub fn get_admin_principal_memory() -> Memory {
+    get_memory(ADMIN_PRINCIPAL_MEM_ID)
+}
+
+pub fn get_cron_principal_memory() -> Memory {
+    get_memory(CRON_PRINCIPAL_MEM_ID)
+}
+
+pub fn get_min_cycles_threshold_memory() -> Memory {
+    get_memory(MIN_CYCLES_THRESHOLD_MEM_ID)
+}
+
 // Functions for Counter Memories
 pub fn get_token_counter_memory() -> Memory {
     get_memory(TOKEN_COUNTER_MEM_ID)
@@ -114,11 +135,12 @@ pub fn get_content_principal_idx_memory() -> Memory {
 pub fn get_upload_principal_idx_memory() -> Memory {
     get_memory(UPLOAD_PRINCIPAL_IDX_MEM_ID)
 }
-
+pub fn get_upload_chunks_memory() -> Memory {
+    get_memory(UPLOAD_CHUNKS_MEM_ID)
+}
 pub fn get_staging_buffer_memory() -> Memory {
     get_memory(STAGING_BUFFER_MEM_ID)
 }
-
 pub fn get_cursor_memory() -> Memory {
     get_memory(CURSOR_MEM_ID)
-} 
+}

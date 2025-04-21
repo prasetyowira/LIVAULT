@@ -1,9 +1,9 @@
 // src/backend/storage/tokens.rs
 use crate::error::VaultError;
-use crate::models::VaultInviteToken;
+use crate::models::vault_invite_token::VaultInviteToken;
 use crate::storage::storable::Cbor;
 use crate::storage::memory::{Memory, get_token_counter_memory, get_invite_tokens_memory, get_token_principal_idx_memory};
-use ic_stable_structures::{StableCell, StableBTreeMap, DefaultMemoryImpl};
+use ic_stable_structures::{StableCell, StableBTreeMap};
 use std::cell::RefCell;
 use candid::Principal;
 

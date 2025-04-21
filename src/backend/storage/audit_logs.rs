@@ -60,4 +60,47 @@ pub fn get_entries(vault_id_str: &str) -> Option<Vec<AuditLogEntry>> {
     })
 }
 
-// TODO: Add function for log compaction/rotation if needed. 
+/// Compacts the audit log for a vault, keeping only the most recent entries.
+pub fn compact_log(vault_id_str: &str, max_entries: usize) -> Result<(), String> {
+    if max_entries == 0 {
+        return Err("max_entries must be greater than 0 for compaction".to_string());
+    }
+
+    LOGS.with(|map_ref| {
+        let key = create_audit_log_key(vault_id_str);
+        let mut map = map_ref.borrow_mut();
+
+        if let Some(current_log_vec) = map.get(&key).map(|cbor| cbor.0) {
+            if current_log_vec.len() > max_entries {
+                // Calculate how many entries to skip
+                let start_index = current_log_vec.len() - max_entries;
+                // Create a new vector with the last max_entries
+                let compacted_log: Vec<AuditLogEntry> = current_log_vec.clone().into_iter().skip(start_index).collect();
+
+                ic_cdk::println!(
+                    "Compacting audit log for vault {}, keeping {} of {} entries.",
+                    vault_id_str,
+                    compacted_log.len(),
+                    current_log_vec.len() + max_entries - compacted_log.len() // Reconstruct original len for log msg
+                );
+
+                // Insert the compacted log back into the map
+                map.insert(key, Cbor(compacted_log));
+            } else {
+                // Log size is already within the limit, no compaction needed.
+                ic_cdk::println!(
+                    "Audit log for vault {} has {} entries (limit {}), no compaction needed.",
+                    vault_id_str,
+                    current_log_vec.len(),
+                    max_entries
+                );
+            }
+        } else {
+            // No log found for this vault, nothing to compact.
+            ic_cdk::println!("No audit log found for vault {} to compact.", vault_id_str);
+        }
+        Ok(())
+    })
+}
+
+// Note: No need to log compaction/rotation.

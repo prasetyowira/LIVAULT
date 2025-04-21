@@ -21,7 +21,7 @@ thread_local! {
 /// Inserts or updates a vault configuration.
 pub fn insert_vault_config(config: &VaultConfig) -> Option<VaultConfig> {
     // Assuming config.vault_id is the Principal to be used as key
-    let key = StorableString(config.vault_id.to_text());
+    let key = Cbor(config.vault_id.to_text());
     let storable_config = Cbor(config.clone());
 
     CONFIGS.with(|map_ref| {
@@ -33,7 +33,7 @@ pub fn insert_vault_config(config: &VaultConfig) -> Option<VaultConfig> {
 
 /// Retrieves a vault configuration by its ID (Principal).
 pub fn get_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
-    let key = StorableString(vault_id.to_text());
+    let key = Cbor(vault_id.to_text());
     CONFIGS.with(|map_ref| {
         map_ref.borrow()
             .get(&key)
@@ -43,7 +43,7 @@ pub fn get_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
 
 /// Removes a vault configuration.
 pub fn remove_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
-    let key = StorableString(vault_id.to_text());
+    let key = Cbor(vault_id.to_text());
     CONFIGS.with(|map_ref| {
         map_ref.borrow_mut()
             .remove(&key)
@@ -51,4 +51,4 @@ pub fn remove_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
     })
 }
 
-// Add other helper functions if needed, e.g., for listing or iteration. 
+// TODO: Add other helper functions if needed, e.g., for listing or iteration.
