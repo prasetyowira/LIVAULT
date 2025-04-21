@@ -109,4 +109,24 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/upload_service.rs`: Update content index logic (may move to `storage::content`).
     *   `services/upload_service.rs`: Add function to get content item details.
     *   `services/upload_service.rs`: Add function to delete content item (update index & storage usage).
-    *   `
+    *   `services/upload_service.rs`: Add function to list content items for a vault (using index).
+    *   `services/upload_service.rs`: Consider if upload sessions need internal IDs + secondary index.
+    *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for ICP payments.
+    *   `services/payment_service.rs`: Add function to close/finalize payment session.
+    *   `services/payment_service.rs`: Refine ICP ledger verification (potentially use Tx hash).
+    *   `services/payment_service.rs`: Add function to handle ChainFusion payments (initiate swap, verify completion).
+    *   `services/payment_service.rs`: Add function to get payment session status.
+    *   `services/payment_service.rs`: Implement actual billing log query (e.g., get history).
+    *   `storage/mod.rs`: Add modules for vault_configs, members, audit_logs, etc., if fully modularizing storage.
+    *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
+    *   `storage/content.rs`: Add function to update content item (handle secondary index).
+    *   `storage/uploads.rs`: Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
+    *   `storage/structures.rs`: **[X]** Refactored `VAULT_MEMBERS` key to `(VaultId, PrincipalId)`.
+    *   `models/common.rs`: **[X]** Added `MemberStatus::Verified`.
+    *   `storage/uploads.rs`: Determine appropriate memory ID for upload buffer/staging.
+    *   `storage/uploads.rs`: Update function signatures/types for `UploadSessionData` (e.g., `save_chunk`).
+    *   `storage/uploads.rs`: Add functions for managing upload chunks (likely needs separate storage).
+    *   `adapter/chainfusion_adapter.rs`: (Covered by Phase 7 tasks: implement outcalls, configure URL).
+
+## AI Question
+*   **[ ] `services/upload_service.rs` / `storage/uploads.rs`:** Current `ACTIVE_UPLOADS` in `UploadService` is in-memory. Consider moving to stable storage (`ic-stable-structures::Stash` or custom map) in `storage/uploads.rs` if uploads must survive canister upgrades. Evaluate trade-offs (complexity vs. persistence).
