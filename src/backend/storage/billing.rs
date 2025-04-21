@@ -49,3 +49,8 @@ pub fn query_billing_entries(offset: usize, limit: usize) -> Vec<BillingEntry> {
             .collect()
     })
 }
+
+/// Function to return the count of billing log entries.
+pub fn get_billing_log_len() -> u64 {
+    BILLING_LOG.with(|log| log.borrow().len())
+}

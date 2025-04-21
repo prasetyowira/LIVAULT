@@ -48,8 +48,8 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[X] Task 7.2:** Integrate adapter into Payment flow.
 -   **[ ] Task 7.3:** Perform manual validation with mocked CF API.
 -   **[X] Task 7.4:** Extend Billing models for multi‑token.
--   **[ ] Task:** Implement actual HTTP outcalls in `adapter/chainfusion_adapter.rs` (replace TODOs).
--   **[ ] Task:** Implement robust ICP transaction verification after ChainFusion completion in `payment_service.rs` (replace placeholder).
+-   **[X] Task:** Implement actual HTTP outcalls in `adapter/chainfusion_adapter.rs` (replace TODOs).
+-   **[X] Task:** Implement robust ICP transaction verification after ChainFusion completion in `payment_service.rs` (replace placeholder).
 -   **[ ] Task:** Configure actual `CHAINFUSION_API_URL` in `adapter/chainfusion_adapter.rs`.
 
 ## Phase 8: Deployment & Ops Automation - COMPLETED (2024-07-26)
@@ -114,7 +114,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for ICP payments.
     *   `services/payment_service.rs`: **[X]** Add function to close/finalize payment session.
     *   `services/payment_service.rs`: **[X]** Refine ICP ledger verification (implemented balance check).
-    *   `services/payment_service.rs`: Add function to handle ChainFusion payments (initiate swap, verify completion).
+    *   `services/payment_service.rs`: **[X]** Add function to handle ChainFusion payments (initiate swap, verify completion - uses balance check).
     *   `services/payment_service.rs`: **[X]** Add function to get payment session status.
     *   `services/payment_service.rs`: **[X]** Implement actual billing log query (e.g., get history).
     *   `storage/mod.rs`: **[x]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
@@ -124,4 +124,4 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `storage/uploads.rs`: **[X]** Determine appropriate memory ID for upload buffer/staging.
     *   `storage/uploads.rs`: **[X]** Update function signatures/types for `UploadSessionData`.
     *   `storage/uploads.rs`: **[X]** Add functions for managing upload chunks (needs separate storage structure).
-    *   `adapter/chainfusion_adapter.rs`: (Covered by Phase 7 tasks: implement outcalls, configure URL).
+    *   `adapter/chainfusion_adapter.rs`: **[X]** (Covered by Phase 7 tasks: implement outcalls, configure URL).

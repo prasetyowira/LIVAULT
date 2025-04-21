@@ -32,6 +32,12 @@ pub enum VaultError {
     #[error("Internal canister error: {0}")]
     InternalError(String),
 
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    #[error("HTTP outcall error: {0}")]
+    HttpError(String),
+
     // Add more specific errors based on PRD and tech docs
     #[error("Approval quorum not met")]
     ApprovalQuorumNotMet,
@@ -129,6 +135,8 @@ impl std::fmt::Display for VaultError {
             VaultError::InvalidInput(s) => write!(f, "Invalid input: {}", s),
             VaultError::InvalidStateTransition => write!(f, "Invalid state transition requested"),
             VaultError::InternalError(s) => write!(f, "Internal canister error: {}", s),
+            VaultError::SerializationError(s) => write!(f, "Serialization error: {}", s),
+            VaultError::HttpError(s) => write!(f, "HTTP outcall error: {}", s),
             VaultError::NotUnlockable => write!(f, "Vault is not in an unlockable state"),
             VaultError::UnlockConditionsNotMet => write!(f, "Vault unlock conditions have not been met"),
         }

@@ -12,7 +12,7 @@ This rule provides a high-level overview and links to the detailed backend archi
 For a comprehensive understanding of the backend architecture, including components, data flow, and design decisions, please refer to on base project:
 
 - [plans/backend.architecture.md](mdc:plans/backend.architecture.md)
-
+- @docs/storage.md for storage layer docs
 json schema file pattern: `*.schema.json` in @plans
 
 ## Key Aspects (from documentation)

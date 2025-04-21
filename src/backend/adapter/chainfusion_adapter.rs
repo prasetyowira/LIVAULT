@@ -1,20 +1,26 @@
 use crate::error::VaultError;
-use crate::models::common::{PrincipalId, Timestamp};
-use crate::models::payment::{E8s, SessionId, PayMethod};
+use crate::models::common::{PrincipalId, Timestamp, SessionId};
+use crate::models::payment::{E8s, PayMethod};
 use candid::{CandidType, Nat, Principal};
 use serde::{Deserialize, Serialize};
-use ic_cdk::api::management_canister::http_request::{HttpMethod, CanisterHttpRequestArgument, HttpResponse, http_request};
+use ic_cdk::api::management_canister::http_request::{HttpMethod, CanisterHttpRequestArgument, HttpResponse, http_request, HttpHeader};
+use serde_json; // Add serde_json for JSON handling
 
 // Placeholder URL for the ChainFusion service API
 // TODO: Replace with the actual ChainFusion API endpoint URL
 const CHAINFUSION_API_URL: &str = "https://chainfusion.example.com/api";
+// Define API paths
+const INIT_SWAP_PATH: &str = "/init_swap";
+const SWAP_STATUS_PATH: &str = "/swap_status";
+
 const HTTP_OUTCALL_CYCLES: u128 = 100_000_000; // Cycles for the HTTP outcall
+const MAX_RESPONSE_BYTES: u64 = 1024 * 10; // Max 10KiB response
 
 // --- ChainFusion API Request/Response Structs (Placeholders) ---
 
 #[derive(CandidType, Serialize, Deserialize, Debug, Clone)]
 pub struct ChainFusionInitRequest {
-    pub session_id: PrincipalId,
+    pub session_id: SessionId,
     pub target_principal: String, // The principal (derived subaccount) to receive ICP
     pub target_amount_icp_e8s: E8s,
     // Potentially add user's desired source token if known, e.g., "ETH", "BTC"
@@ -58,20 +64,47 @@ pub async fn initialize_chainfusion_swap(
 ) -> Result<ChainFusionInitResponse, VaultError> {
     ic_cdk::print(format!("🔗 INFO: Initializing ChainFusion swap for session {}", req.session_id));
 
-    // TODO: Implement actual HTTP outcall to ChainFusion /init_swap endpoint
-    // 1. Serialize the ChainFusionInitRequest to JSON or CBOR.
-    // 2. Construct the HttpRequestArgument (POST, URL, headers, body).
-    // 3. Make the http_request call with cycles.
-    // 4. Deserialize the response body into ChainFusionInitResponse.
-    // 5. Handle errors (network, status codes, deserialization).
+    // 1. Serialize the request to JSON
+    let request_body = serde_json::to_vec(&req)
+        .map_err(|e| VaultError::SerializationError(format!("Failed to serialize ChainFusionInitRequest: {}", e)))?;
 
-    // Placeholder implementation
-    Ok(ChainFusionInitResponse {
-        swap_address: format!("mock_swap_addr_{}", req.session_id),
-        source_token_symbol: "ETH".to_string(),
-        estimated_source_amount: "0.05".to_string(),
-        expires_at: ic_cdk::api::time() + 30 * 60 * 1_000_000_000, // 30 mins from now
-    })
+    // 2. Construct the HTTP request argument
+    let request_arg = CanisterHttpRequestArgument {
+        url: format!("{}{}", CHAINFUSION_API_URL, INIT_SWAP_PATH),
+        method: HttpMethod::POST,
+        body: Some(request_body),
+        max_response_bytes: Some(MAX_RESPONSE_BYTES),
+        transform: None, // No transform function for now
+        headers: vec![
+            HttpHeader { name: String::from("Content-Type"), value: String::from("application/json") },
+        ],
+    };
+
+    // 3. Make the HTTP outcall
+    ic_cdk::print("🔗 INFO: Making HTTP outcall to initialize ChainFusion swap...");
+    match http_request(request_arg, HTTP_OUTCALL_CYCLES).await {
+        Ok((response,)) => {
+            ic_cdk::print(format!("🔗 INFO: Received HTTP response with status {}", response.status));
+            if response.status >= 200 && response.status < 300 {
+                // 4. Deserialize the response body
+                serde_json::from_slice::<ChainFusionInitResponse>(&response.body)
+                    .map_err(|e| VaultError::SerializationError(format!("Failed to deserialize ChainFusionInitResponse: {}", e)))
+            } else {
+                Err(VaultError::HttpError(format!(
+                    "ChainFusion init_swap API returned error status {}: {}",
+                    response.status,
+                    String::from_utf8_lossy(&response.body)
+                )))
+            }
+        }
+        Err((code, msg)) => {
+            ic_cdk::eprintln!("🔥 ERROR: HTTP outcall failed: {:?} - {}", code, msg);
+            Err(VaultError::HttpError(format!(
+                "Failed to call ChainFusion init_swap API: {:?} - {}",
+                code, msg
+            )))
+        }
+    }
 }
 
 /// Calls the ChainFusion service to check the status of a swap.
@@ -81,27 +114,45 @@ pub async fn check_chainfusion_swap_status(
     ic_cdk::print(format!("🔗 INFO: Checking ChainFusion swap status for session {}", session_id));
     let req = ChainFusionStatusRequest { session_id: session_id.clone() };
 
-    // TODO: Implement actual HTTP outcall to ChainFusion /swap_status endpoint
-    // 1. Serialize the ChainFusionStatusRequest.
-    // 2. Construct the HttpRequestArgument (GET or POST, URL, headers, body?).
-    // 3. Make the http_request call with cycles.
-    // 4. Deserialize the response body into ChainFusionStatusResponse.
-    // 5. Handle errors.
+    // 1. Serialize the request (assuming status requires POST with body)
+    let request_body = serde_json::to_vec(&req)
+        .map_err(|e| VaultError::SerializationError(format!("Failed to serialize ChainFusionStatusRequest: {}", e)))?;
 
-    // Placeholder implementation (simulate eventual completion)
-    let mock_status = if ic_cdk::api::time() % 2 == 0 {
-        ChainFusionSwapStatus::Processing
-    } else {
-        ChainFusionSwapStatus::Completed
+    // 2. Construct the HTTP request argument (Assuming POST, adjust if GET)
+    let request_arg = CanisterHttpRequestArgument {
+        url: format!("{}{}", CHAINFUSION_API_URL, SWAP_STATUS_PATH),
+        method: HttpMethod::POST, // Or HttpMethod::GET if applicable
+        body: Some(request_body), // Or None if GET with query parameters
+        max_response_bytes: Some(MAX_RESPONSE_BYTES),
+        transform: None,
+        headers: vec![
+            HttpHeader { name: String::from("Content-Type"), value: String::from("application/json") },
+        ],
     };
 
-    Ok(ChainFusionStatusResponse {
-        session_id: session_id.clone(),
-        status: mock_status.clone(),
-        icp_tx_hash: if mock_status == ChainFusionSwapStatus::Completed {
-            Some(format!("mock_icp_tx_{}", session_id))
-        } else {
-            None
-        },
-    })
+    // 3. Make the HTTP outcall
+    ic_cdk::print("🔗 INFO: Making HTTP outcall to check ChainFusion swap status...");
+    match http_request(request_arg, HTTP_OUTCALL_CYCLES).await {
+        Ok((response,)) => {
+            ic_cdk::print(format!("🔗 INFO: Received HTTP response with status {}", response.status));
+            if response.status >= 200 && response.status < 300 {
+                // 4. Deserialize the response body
+                serde_json::from_slice::<ChainFusionStatusResponse>(&response.body)
+                    .map_err(|e| VaultError::SerializationError(format!("Failed to deserialize ChainFusionStatusResponse: {}", e)))
+            } else {
+                Err(VaultError::HttpError(format!(
+                    "ChainFusion swap_status API returned error status {}: {}",
+                    response.status,
+                    String::from_utf8_lossy(&response.body)
+                )))
+            }
+        }
+        Err((code, msg)) => {
+            ic_cdk::eprintln!("🔥 ERROR: HTTP outcall failed: {:?} - {}", code, msg);
+            Err(VaultError::HttpError(format!(
+                "Failed to call ChainFusion swap_status API: {:?} - {}",
+                code, msg
+            )))
+        }
+    }
 } 

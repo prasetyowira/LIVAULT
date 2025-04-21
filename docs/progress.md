@@ -306,6 +306,24 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 
 ---
 
+## 2024-07-27: Review Payment Service & Models
+
+**Overview:** Reviewed `src/backend/services/payment_service.rs` and `src/backend/models/payment.rs` against `storage.md`, `backend.architecture.md`, and `prd.md`.
+
+**Findings:**
+-   **Alignment:** The service logic, state transitions, method handling (ICP Direct, ChainFusion stubs), and interactions with vault/billing services align well with the documented architecture and requirements.
+-   **Storage:**
+    -   Billing entries are correctly stored using `storage::billing`.
+    -   Vault status updates correctly call `vault_service`.
+    -   **Discrepancy Noted:** Payment sessions (`PaymentSession`) are currently stored in volatile memory (`thread_local! HashMap` in `models/payment.rs`) via helper functions. While `PaymentSession` implements `Storable`, no stable map is defined in `storage.md`. The architecture doc mentioned volatile storage with snapshots; the current implementation uses only volatile.
+    -   **Decision:** Volatile storage is acceptable for MVP given the short-lived nature of sessions, but stable storage might be needed later if sessions must survive upgrades.
+-   **TODOs:** The remaining TODO in `verify_chainfusion_payment` is expected pending adapter implementation.
+
+**Relevant Docs:**
+*   [`docs/storage.md`](mdc:docs/storage.md)
+*   [`plans/backend.architecture.md`](mdc:plans/backend.architecture.md)
+*   [`plans/prd.md`](mdc:plans/prd.md)
+
 ## 2024-07-27: TODO Cleanup & Storage Documentation
 
 **Overview:** Addressed several TODO items identified in the codebase and documentation, focusing on guards, configuration, and storage layer modularization. Created documentation for the storage layer.
@@ -336,4 +354,51 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 
 **Relevant Docs:**
 *   [`docs/storage.md`](mdc:docs/storage.md) (New)
-*   [`docs/todo.md`](mdc:docs/todo.md) (Updated) 
+*   [`docs/todo.md`](mdc:docs/todo.md) (Updated)
+
+## 2024-07-27: Implement ChainFusion Adapter HTTP Outcalls
+
+**Overview:** Implemented the actual HTTP outcall logic in `src/backend/adapter/chainfusion_adapter.rs` to replace the placeholder functions, addressing the corresponding TODO items.
+
+**Key Components Implemented/Updated:**
+-   **Imports:** Added `serde_json` for handling request/response bodies.
+-   **Constants:** Defined `INIT_SWAP_PATH`, `SWAP_STATUS_PATH`, and `MAX_RESPONSE_BYTES`.
+-   **`initialize_chainfusion_swap`:**
+    *   Serializes `ChainFusionInitRequest` to JSON.
+    *   Constructs `CanisterHttpRequestArgument` for a POST request to the `/init_swap` endpoint with appropriate headers and body.
+    *   Calls `ic_cdk::api::management_canister::http_request::http_request` with configured cycles.
+    *   Handles the response: checks status code, deserializes the JSON body into `ChainFusionInitResponse`, maps errors to `VaultError::HttpError` or `VaultError::SerializationError`.
+-   **`check_chainfusion_swap_status`:**
+    *   Serializes `ChainFusionStatusRequest` to JSON.
+    *   Constructs `CanisterHttpRequestArgument` for a POST request (assuming status check requires POST, adaptable if GET is needed) to the `/swap_status` endpoint.
+    *   Calls `ic_cdk::api::management_canister::http_request::http_request`.
+    *   Handles the response similarly, deserializing into `ChainFusionStatusResponse`.
+
+**Dependencies:**
+-   `ic-cdk` (for `http_request`)
+-   `serde`, `serde_json` (for JSON serialization/deserialization)
+
+**Relevant Docs:**
+*   [`docs/todo.md`](mdc:docs/todo.md) (Marked adapter HTTP outcall task as done)
+*   [`src/backend/adapter/chainfusion_adapter.rs`](mdc:src/backend/adapter/chainfusion_adapter.rs)
+
+---
+
+## 2024-07-27: Implement Robust ChainFusion ICP Verification
+
+**Overview:** Updated the `verify_chainfusion_payment` function in `src/backend/services/payment_service.rs` to perform a robust verification of the ICP transaction after the ChainFusion adapter reports completion.
+
+**Key Components Implemented/Updated:**
+-   **`verify_chainfusion_payment`:**
+    *   Removed the placeholder `let icp_tx_verified = true;`.
+    *   When `check_chainfusion_swap_status` returns `ChainFusionSwapStatus::Completed`, the function now calls the existing `verify_icp_ledger_payment(session).await` function.
+    *   This ensures that the primary verification relies on checking the actual balance of the designated subaccount (`session.pay_to_account_id`) against the expected `session.amount_e8s`.
+    *   The `icp_tx_hash` provided by the ChainFusion adapter is preserved (or generated if missing) and returned upon successful balance verification, primarily for auditing/logging purposes.
+    *   Added specific error logging if the ChainFusion adapter reports completion but the `verify_icp_ledger_payment` balance check fails.
+
+**Dependencies:**
+-   Relies on existing dependencies within `payment_service.rs` and the `chainfusion_adapter`.
+
+**Relevant Docs:**
+*   [`docs/todo.md`](mdc:docs/todo.md) (Marked ChainFusion verification task as done)
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs) 

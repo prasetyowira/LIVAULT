@@ -34,6 +34,7 @@ impl Default for PayState { fn default() -> Self { PayState::Issued } }
 pub struct PaymentSession {
     pub session_id: PrincipalId,
     pub pay_to_account_id: String,   // ICP AccountIdentifier (derived from this canister + subaccount)
+    pub pay_to_subaccount: Option<[u8; 32]>, // Store the raw subaccount bytes
     pub amount_e8s: E8s,             // Amount expected in ICP e8s
     pub vault_plan: String,           // e.g., "Standard", "Premium"
     pub method: PayMethod,
@@ -76,13 +77,14 @@ impl Storable for PaymentSession {
     // Method/State (~10) + Principal (29) + Timestamps (3*8=24) +
     // Error (~100) + Hashes (2*66=132) + CF fields (~100 + 10 + 20 = 130)
     // ~ 553 bytes. Round up generously.
-    const BOUND: Bound = Bound::Bounded { max_size: 600, is_fixed_size: false };
+    // Increased max_size for subaccount
+    const BOUND: Bound = Bound::Bounded { max_size: 640, is_fixed_size: false };
 }
 
 // --- In-Memory Store for Payment Sessions ---
 // Cleared on upgrade. Persistence could be added later if needed.
 thread_local! {
-    static PAYMENT_SESSIONS: RefCell<HashMap<SessionId, PaymentSession>> = RefCell::new(HashMap::new());
+    static PAYMENT_SESSIONS: RefCell<HashMap<PrincipalId, PaymentSession>> = RefCell::new(HashMap::new());
 }
 
 /// Stores a payment session in the in-memory map.
@@ -93,7 +95,7 @@ pub fn store_payment_session(session: PaymentSession) {
 }
 
 /// Retrieves a mutable reference to a payment session.
-pub fn with_payment_session_mut<F, R>(session_id: &SessionId, f: F) -> Result<R, VaultError>
+pub fn with_payment_session_mut<F, R>(session_id: &PrincipalId, f: F) -> Result<R, VaultError>
 where
     F: FnOnce(&mut PaymentSession) -> Result<R, VaultError>,
 {
@@ -107,7 +109,7 @@ where
 }
 
 /// Retrieves an immutable reference to a payment session.
-pub fn with_payment_session<F, R>(session_id: &SessionId, f: F) -> Result<R, VaultError>
+pub fn with_payment_session<F, R>(session_id: &PrincipalId, f: F) -> Result<R, VaultError>
 where
     F: FnOnce(&PaymentSession) -> Result<R, VaultError>,
 {
