@@ -1,6 +1,6 @@
 // src/backend/models/vault_member.rs
 use crate::models::common::{MemberId, MemberStatus, PrincipalId, Role, Timestamp, VaultId};
-use candid::CandidType;
+use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, Default)]
@@ -13,7 +13,10 @@ pub struct AccessControl {
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct VaultMember {
-    pub member_id: MemberId,         // Unique identifier for this membership
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub internal_id: Option<u64>,
+
+    pub member_id: MemberId,
     pub vault_id: VaultId,
     pub principal: PrincipalId,
     pub role: Role,
@@ -31,9 +34,10 @@ pub struct VaultMember {
 impl Default for VaultMember {
     fn default() -> Self {
         Self {
-            member_id: String::new(),
-            vault_id: String::new(),
-            principal: PrincipalId::anonymous(),
+            internal_id: None,
+            member_id: Principal::anonymous(),
+            vault_id: Principal::anonymous(),
+            principal: Principal::anonymous(),
             role: Role::Heir,
             status: MemberStatus::Pending,
             name: None,

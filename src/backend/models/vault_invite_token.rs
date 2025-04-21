@@ -1,34 +1,40 @@
 // src/backend/models/vault_invite_token.rs
 use crate::models::common::{InviteStatus, InviteTokenId, Role, Timestamp, VaultId};
-use candid::CandidType;
+use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug, Default)]
 pub struct VaultInviteToken {
-    pub token_id: InviteTokenId, // The unique token string (e.g., ULID or random bytes encoded)
-    pub vault_id: VaultId,
+    // Internal ID, used as primary key in storage, NOT exposed in API directly
+    #[serde(skip_serializing)] // Skip serialization if never needed externally
+    pub internal_id: u64,
+
+    // Exposed ID (Principal), used in API - Type alias resolves to Principal
+    pub token_id: InviteTokenId,
+    pub vault_id: VaultId, // Now Principal
     pub role: Role,
-    pub shamir_share_index: u8, // Assigned share index for the invitee (1-255)
     pub status: InviteStatus,
     pub created_at: Timestamp,
-    pub expires_at: Timestamp, // Typically 24 hours from creation
+    pub expires_at: Timestamp,
     pub claimed_at: Option<Timestamp>,
-    pub claimed_by: Option<candid::Principal>, // Principal of the user who claimed it
+    pub claimed_by: Option<Principal>,
+    pub shamir_share_index: u8,
 }
 
-// Implement Default if needed for initialization scenarios
+/* // Removed old Default implementation, using derive now
 impl Default for VaultInviteToken {
     fn default() -> Self {
         Self {
             token_id: String::new(),
             vault_id: String::new(),
             role: Role::Heir,
-            shamir_share_index: 0, // Should be assigned properly
+            shamir_share_index: 0,
             status: InviteStatus::Pending,
             created_at: 0,
-            expires_at: 0, // Should be calculated (e.g., now + 24h)
+            expires_at: 0,
             claimed_at: None,
             claimed_by: None,
         }
     }
-} 
+}
+*/ 

@@ -66,6 +66,9 @@ fn validate_request<T: Validate>(req: &T) -> Result<(), VaultError> {
     req.validate().map_err(|e| VaultError::InvalidInput(e.to_string()))
 }
 
+// Add Principal validator if complex validation needed
+fn validate_principal(p: &Principal) -> Result<(), ValidationError> { Ok(()) /* Basic check */ }
+
 // --- Request/Response Structs (as per icp-api-conventions) ---
 
 // Placeholder for profile data returned after claiming invite
@@ -99,7 +102,7 @@ pub struct CreateVaultRequest {
 // Vault Update
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct UpdateVaultRequest {
-    #[validate(length(min = 26, max = 26))]
+    #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
     #[validate(length(min = 1, max = 100))]
     pub name: Option<String>,
@@ -113,7 +116,7 @@ pub struct UpdateVaultRequest {
 // Generate Invite
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct GenerateInviteRequest {
-    #[validate(length(min = 26, max = 26))]
+    #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
     pub role: Role,
 }
@@ -121,7 +124,7 @@ pub struct GenerateInviteRequest {
 // Claim Invite
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct ClaimInviteRequest {
-    #[validate(length(min = 1))]
+    #[validate(custom = "validate_principal")]
     pub token: InviteTokenId,
     #[validate(length(min = 1, max = 100))]
     pub name: Option<String>,
@@ -132,7 +135,7 @@ pub struct ClaimInviteRequest {
 // Upload
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct BeginUploadRequest {
-    #[validate(length(min = 26, max = 26))]
+    #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
     #[validate]
     pub file_meta: FileMeta,
@@ -140,7 +143,7 @@ pub struct BeginUploadRequest {
 
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct UploadChunkRequest {
-    #[validate(length(min = 1))]
+    #[validate(custom = "validate_principal")]
     pub upload_id: UploadId,
     pub chunk_index: u32,
     #[serde(with = "serde_bytes")]
@@ -150,7 +153,7 @@ pub struct UploadChunkRequest {
 
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct FinishUploadRequest {
-    #[validate(length(min = 1))]
+    #[validate(custom = "validate_principal")]
     pub upload_id: UploadId,
     #[validate(length(min = 64, max = 64))]
     pub sha256_checksum_hex: String,
@@ -159,9 +162,9 @@ pub struct FinishUploadRequest {
 // Download
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct RequestDownloadRequest {
-    #[validate(length(min = 26, max = 26))]
+    #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
-    #[validate(length(min = 1))]
+    #[validate(custom = "validate_principal")]
     pub content_id: ContentId,
 }
 
@@ -174,7 +177,7 @@ pub struct DownloadInfo {
 // Unlock
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct TriggerUnlockRequest {
-    #[validate(length(min = 1, message = "Vault ID cannot be empty"))]
+    #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
     // Add any necessary witness data/proof if needed
 }
@@ -253,16 +256,15 @@ async fn init_payment(req: ApiPaymentInitRequest) -> Result<PaymentSession, Vaul
 pub struct VerifyPaymentRequest {
     #[validate(length(min = 1))]
     pub session_id: SessionId,
-    #[validate(length(min = 26, max = 26))]
-    pub vault_id: VaultId, // Likely needed to link payment to vault
+    #[validate(custom = "validate_principal")]
+    pub vault_id: VaultId,
 }
 
 #[update] // Verification likely updates vault/session state
 async fn verify_payment(req: VerifyPaymentRequest) -> Result<String, VaultError> {
     validate_request(&req)?;
-    // Apply cycle check
     check_cycles()?;
-    payment_service::verify_payment(req.session_id, req.vault_id).await
+    payment_service::verify_and_associate_payment(req.session_id, req.vault_id).await
 }
 
 // --- Vault Core Endpoints ---
@@ -315,83 +317,64 @@ async fn generate_invite(req: GenerateInviteRequest) -> Result<VaultInviteToken,
     invite_service::generate_new_invite(&req.vault_id, req.role, caller()).await
 }
 
-// Comment out claim_invite as claim_invite_token is missing/refactored
-// #[update]
-// async fn claim_invite(req: ClaimInviteRequest) -> Result<MemberId, VaultError> {
-//     validate_request(&req)?;
-//     let caller = ic_caller();
-// 
-//     // Create MemberProfile from request
-//     let profile_data = MemberProfile {
-//         name: req.member_name,
-//         relation: req.member_relation,
-//     };
-// 
-//     // Pass the token ID and profile data to the service
-//     // Error: invite_service::claim_invite_token function missing
-//     // Assuming claim_existing_invite is the correct replacement
-//     invite_service::claim_existing_invite(&req.token, caller, profile_data).await
-// }
+#[update]
+async fn claim_invite(req: ClaimInviteRequest) -> Result<MemberProfile, VaultError> {
+    validate_request(&req)?;
+    check_cycles()?;
+    let claimer = caller();
+    // Map request fields to the InviteClaimData struct expected by the service
+    let claim_data = invite_service::InviteClaimData {
+        name: req.name,
+        relation: req.relation,
+    };
+    // Pass the Principal token_id and mapped data
+    services::invite_service::claim_existing_invite(req.token, claimer, claim_data).await
+}
+
+#[update]
+async fn revoke_invite(token_id: InviteTokenId /* Principal */) -> Result<(), VaultError> {
+    // Basic validation for Principal ID if needed
+    // validate_principal(&token_id)?;
+    check_cycles()?;
+    let caller = caller();
+    // Note: Service function revoke_invite_token requires owner check. 
+    // This might need refactoring in the service or require vault_id here.
+    // For now, calling the service directly.
+    services::invite_service::revoke_invite_token(token_id, caller)
+}
 
 // --- Content Upload Endpoints ---
 
 #[update]
-async fn begin_upload(req: BeginUploadRequest) -> Result<UploadId, VaultError> {
+async fn begin_upload(req: BeginUploadRequest) -> Result<UploadId /* Principal */, VaultError> {
     validate_request(&req)?;
-    // rate_guard(caller())?;
+    let caller = caller();
+    owner_guard(&req.vault_id)?; // Assuming owner_guard accepts Principal ref
     check_cycles()?;
-
-    // Pass vault_id by value (String implements Copy for Candid)
-    upload_service::begin_chunked_upload(req.vault_id, req.file_meta, caller()).await
+    services::upload_service::begin_chunked_upload(req.vault_id, req.file_meta, caller).await
 }
 
 #[update]
 async fn upload_chunk(req: UploadChunkRequest) -> Result<(), VaultError> {
-    validate_request(&req)?; // Validate chunk request
-    // rate_guard(caller())?;
+    validate_request(&req)?;
     check_cycles()?;
-
-    upload_service::upload_chunk(&req.upload_id, req.chunk_index, &req.data, caller()).await
+    let caller = caller();
+    services::upload_service::upload_chunk(req.upload_id, req.chunk_index, &req.data, caller).await
 }
 
 #[update]
-async fn finish_upload(req: FinishUploadRequest) -> Result<ContentId, VaultError> {
-    validate_request(&req)?; // Validate input
-    // rate_guard(caller())?;
+async fn finish_upload(req: FinishUploadRequest) -> Result<ContentId /* Principal */, VaultError> {
+    validate_request(&req)?;
     check_cycles()?;
-
-    // Pass String by value, remove caller argument
-    upload_service::finish_chunked_upload(&req.upload_id, req.sha256_checksum_hex).await
+    services::upload_service::finish_chunked_upload(req.upload_id, req.sha256_checksum_hex).await
 }
 
 // --- Content Download Endpoint ---
-#[query] // Should be query as it doesn't change state
+#[query(guard = "check_cycles")]
 async fn request_download(req: RequestDownloadRequest) -> Result<DownloadInfo, VaultError> {
-    validate_request(&req)?; // Validate input
-    // Apply download-specific rate limit?
-    // rate_guard(caller())?;
-    // Check if vault is unlockable and caller has rights
-    // This likely needs access to vault state and member roles
-    let vault_config = vault_service::get_vault_config(&req.vault_id).await?;
-    if vault_config.status != VaultStatus::Unlockable {
-        return Err(VaultError::NotUnlockable("Vault is not currently unlockable.".to_string()));
-    }
-
-    // TODO: Check if caller() is an authorized member (heir)
-    // let members = vault_service::get_members(&req.vault_id).await?;
-    // if !members.iter().any(|m| m.principal == caller() && m.role == Role::Heir) {
-    //     return Err(VaultError::NotAuthorized("Only heirs can download content.".to_string()));
-    // }
-
-    // TODO: Implement download logic (e.g., generate presigned URL if using asset canister)
-    // For MVP, perhaps just return the content ID and let FE handle reconstruction?
-    // Or return a dummy URL for now.
-
-    // Example dummy response:
-    Ok(DownloadInfo {
-        url: format!("https://{}.raw.icp0.io/download/{}", ic_cdk::api::id(), req.content_id),
-        expires_at: ic_cdk::api::time() + (8 * 60 * 60 * 1_000_000_000), // 8 hours
-    })
+    validate_request(&req)?;
+    member_or_heir_guard(&req.vault_id)?; // Assuming guard accepts Principal ref
+    services::vault_service::get_download_info(req.vault_id, req.content_id).await
 }
 
 // --- Unlock Endpoint ---

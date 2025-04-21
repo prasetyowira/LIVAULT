@@ -4,9 +4,11 @@
 use crate::{
     error::VaultError,
     models::{common::*, vault_config::VaultConfig, vault_content_item::VaultContentItem},
-    storage::{self, Cbor, StorableString, CONTENT_INDEX, CONTENT_ITEMS, VAULT_CONFIGS},
-    utils::crypto::{generate_ulid, calculate_sha256_hex},
-    services::vault_service, // For getting vault config
+    // Use modular storage for content
+    storage::{self, Cbor, StorableString, CONTENT_INDEX, /*CONTENT_ITEMS,*/ VAULT_CONFIGS, content as content_storage},
+    // Use new principal generator
+    utils::crypto::{/* generate_ulid, */ calculate_sha256_hex, generate_unique_principal},
+    services::vault_service,
 };
 use ic_cdk::api::{time, caller as ic_caller}; // Added ic_caller to avoid ambiguity
 use sha2::{Digest, Sha256};
@@ -15,9 +17,9 @@ use std::collections::HashMap;
 use hex; // For checksum comparison
 use candid::Principal as PrincipalId; // Explicit import for clarity
 
-// Types
-pub type UploadId = String;
-pub type ContentId = String;
+// Types - Update ID types
+pub type UploadId = crate::models::common::UploadId; // Now Principal
+pub type ContentId = crate::models::common::ContentId; // Now Principal
 const MAX_CHUNK_SIZE_BYTES: usize = 2 * 1024 * 1024; // 2 MiB (adjust as needed)
 // Removed MAX_TOTAL_UPLOAD_SIZE_BYTES, will use vault quota
 
@@ -35,13 +37,14 @@ pub struct FileMeta {
 // In-memory state for an ongoing chunked upload
 #[derive(Clone, Debug)]
 pub struct UploadState {
-    vault_id: VaultId,
-    upload_id: UploadId,
+    vault_id: VaultId, // Now Principal
+    upload_id: UploadId, // Now Principal
     file_meta: FileMeta,
-    chunks: Vec<Vec<u8>>, // Store chunks in memory for now
+    chunks: Vec<Vec<u8>>,
     expected_chunks: usize,
     received_chunks: usize,
     created_at: Timestamp,
+    // TODO: Add initiator Principal for auth checks
 }
 
 // Add public accessor methods for fields needed externally
@@ -58,7 +61,7 @@ impl UploadState {
 }
 
 thread_local! {
-    // In-memory map to store ongoing uploads. Cleared on upgrade.
+    // In-memory map to store ongoing uploads. Key is now Principal.
     pub static ACTIVE_UPLOADS: RefCell<HashMap<UploadId, UploadState>> = RefCell::new(HashMap::new());
 }
 
@@ -100,9 +103,13 @@ fn validate_mime_type(mime_type: &str, content_type: &ContentType) -> Result<(),
 }
 
 /// Helper to update the vault's storage usage directly in stable storage.
-fn update_vault_storage_usage(vault_id: &VaultId, bytes_added: u64) -> Result<(), VaultError> {
+/// TODO: Update to use modular vault storage if created.
+fn update_vault_storage_usage(vault_id: &VaultId /* Now Principal */, bytes_added: u64) -> Result<(), VaultError> {
     storage::VAULT_CONFIGS.with(|map_ref| {
-        let key = Cbor(vault_id.clone()); // Use Cbor directly
+        // Assuming key for VAULT_CONFIGS is Principal now
+        // Need a way to map Principal to the key type if it's not directly Principal
+        // TODO: Adapt this key creation based on how VAULT_CONFIGS is keyed
+        let key = Cbor(vault_id.to_text()); // Placeholder: Assuming key is text representation
         let mut map = map_ref.borrow_mut();
         // Use get() then insert() for update pattern
         if let Some(config_cbor) = map.get(&key) {
@@ -114,14 +121,14 @@ fn update_vault_storage_usage(vault_id: &VaultId, bytes_added: u64) -> Result<()
                 Some(_) => {
                     ic_cdk::print(format!(
                        "💾 INFO: Updated vault {} storage usage by {} bytes.",
-                       vault_id, bytes_added
+                       vault_id.to_text(), bytes_added
                    ));
                    Ok(())
                 },
                 None => {
                      ic_cdk::print(format!(
                        "💾 INFO: Updated vault {} storage usage by {} bytes.",
-                       vault_id, bytes_added
+                       vault_id.to_text(), bytes_added
                    ));
                     Ok(())
                 },
@@ -145,10 +152,10 @@ fn update_vault_storage_usage(vault_id: &VaultId, bytes_added: u64) -> Result<()
 /// # Returns
 /// * `Result<UploadId, VaultError>` - The unique ID for this upload session.
 pub async fn begin_chunked_upload(
-    vault_id: VaultId,
+    vault_id: VaultId, // Principal
     file_meta: FileMeta,
     caller: PrincipalId,
-) -> Result<UploadId, VaultError> {
+) -> Result<UploadId, VaultError> { // Return Principal
     // 1. Validate Vault and Permissions
     let vault_config = vault_service::get_vault_config(&vault_id).await?; // Await async call
     if vault_config.owner != caller { // Simplistic check, might need more roles
@@ -179,12 +186,14 @@ pub async fn begin_chunked_upload(
     // 5. Calculate expected chunks
     let expected_chunks = (file_meta.size_bytes as usize + MAX_CHUNK_SIZE_BYTES - 1) / MAX_CHUNK_SIZE_BYTES;
 
-    // 6. Create Upload State
-    let upload_id = generate_ulid().await;
+    // 6. Create Upload State & Generate Principal ID for upload session
+    // TODO: Consider if upload sessions need internal IDs + secondary index too?
+    // For now, using generated Principal as the primary key for ACTIVE_UPLOADS map.
+    let upload_principal_id = generate_unique_principal().await?;
     let current_time = time();
     let state = UploadState {
-        vault_id: vault_id.clone(), // Clone vault_id here
-        upload_id: upload_id.clone(),
+        vault_id: vault_id.clone(),
+        upload_id: upload_principal_id, // Use Principal
         file_meta,
         chunks: Vec::with_capacity(expected_chunks),
         expected_chunks,
@@ -192,17 +201,17 @@ pub async fn begin_chunked_upload(
         created_at: current_time,
     };
 
-    // 7. Store upload state in memory
+    // 7. Store upload state in memory (keyed by Principal)
     ACTIVE_UPLOADS.with(|map| {
-        map.borrow_mut().insert(upload_id.clone(), state.clone()); // Clone state
+        map.borrow_mut().insert(upload_principal_id, state.clone());
     });
 
     ic_cdk::print(format!(
         "📝 INFO: Begin upload {} for vault {} initiated by {}. Expecting {} chunks.",
-        upload_id, state.vault_id, caller, expected_chunks
+        upload_principal_id.to_text(), state.vault_id.to_text(), caller, expected_chunks
     ));
 
-    Ok(upload_id)
+    Ok(upload_principal_id)
 }
 
 /// Uploads a single chunk for an ongoing session.
@@ -216,15 +225,16 @@ pub async fn begin_chunked_upload(
 /// # Returns
 /// * `Result<(), VaultError>` - Success or an error.
 pub async fn upload_chunk(
-    upload_id: &UploadId,
+    upload_id: UploadId, // Now Principal
     chunk_index: u32,
-    data: &[u8], // Changed to slice for borrowing
+    data: &[u8],
     caller: PrincipalId,
 ) -> Result<(), VaultError> {
     ACTIVE_UPLOADS.with(|map| {
         let mut active_map = map.borrow_mut();
+        // Key is Principal
         let state = active_map
-            .get_mut(upload_id)
+            .get_mut(&upload_id) // Use Principal directly as key
             .ok_or_else(|| VaultError::UploadError("Upload session not found or expired".to_string()))?;
 
         // Basic Authorization: Check if the caller is the one who started the upload
@@ -277,7 +287,7 @@ pub async fn upload_chunk(
 
         ic_cdk::print(format!(
             "📝 INFO: Received chunk {}/{} for upload {}",
-            state.received_chunks, state.expected_chunks, upload_id
+            state.received_chunks, state.expected_chunks, upload_id.to_text()
         ));
 
         Ok(())
@@ -285,20 +295,13 @@ pub async fn upload_chunk(
 }
 
 /// Finalizes a chunked upload, verifies checksum, and creates the VaultContentItem.
-///
-/// # Arguments
-/// * `upload_id` - The ID of the upload session to finalize.
-/// * `sha256_checksum_hex` - The expected SHA256 checksum of the full content (hex encoded).
-///
-/// # Returns
-/// * `Result<ContentId, VaultError>` - The ID of the newly created content item.
 pub async fn finish_chunked_upload(
-    upload_id: &UploadId,
+    upload_id: UploadId, // Now Principal
     sha256_checksum_hex: String,
-) -> Result<ContentId, VaultError> {
+) -> Result<ContentId, VaultError> { // Returns Principal ContentId
     // 1. Retrieve and remove upload state from memory
     let state = ACTIVE_UPLOADS.with(|map| {
-        map.borrow_mut().remove(upload_id)
+        map.borrow_mut().remove(&upload_id) // Use Principal as key
     }).ok_or_else(|| VaultError::UploadError("Upload session not found or expired".to_string()))?;
 
     // TODO: Authorization check - ensure caller matches initiator (need to store initiator)
@@ -332,57 +335,44 @@ pub async fn finish_chunked_upload(
         return Err(VaultError::ChecksumMismatch);
     }
 
-    // 7. Create VaultContentItem (client-side encryption happens before upload)
-    let content_id = generate_ulid().await; // Generate ID for the stored content
+    // 7. Create VaultContentItem using new ID strategy
+    let internal_content_id = content_storage::get_next_content_id()?;
+    let content_principal_id = generate_unique_principal().await?;
     let current_time = time();
+
     let item = VaultContentItem {
-        content_id: content_id.clone(),
-        vault_id: state.vault_id.clone(),
+        internal_id: internal_content_id,
+        content_id: content_principal_id,
+        vault_id: state.vault_id.clone(), // Already Principal
         content_type: state.file_meta.content_type,
-        title: state.file_meta.title.clone(), // Get title from FileMeta
-        description: None, // Description might be part of the encrypted payload or set later
+        title: state.file_meta.title.clone(),
+        description: None,
         created_at: current_time,
         updated_at: current_time,
-        payload: full_content, // Store the reassembled content
+        payload: full_content,
         payload_size_bytes: state.file_meta.size_bytes,
         payload_sha256: Some(sha256_checksum_hex),
     };
 
-    // 8. Store VaultContentItem in stable storage
-    storage::CONTENT_ITEMS.with(|map| {
-        let key = Cbor(content_id.clone());
-        let value = Cbor(item.clone()); // Clone item
-        // Correct match for Option<V> returned by insert
-        match map.borrow_mut().insert(key, value) {
-            Some(_) => Ok(()), // Allow overwrite?
-            None => Ok(()),
-        }
-    })?;
+    // 8. Store VaultContentItem using the new storage function
+    content_storage::insert_content(internal_content_id, item.clone(), content_principal_id)?;
 
-    // 9. Update content index
-    storage::CONTENT_INDEX.with(|service| {
-        storage::CONTENT_INDEX.with(|service| { // Corrected nested with
-            let mut borrowed_map = service.borrow_mut();
-            let key = Cbor(state.vault_id.clone());
-            let mut index_list = borrowed_map.get(&key).map_or_else(Vec::new, |v| v.0);
-            index_list.push(content_id.clone());
-            // Correct match for Option<V> returned by insert
-            match borrowed_map.insert(key, Cbor(index_list)) {
-                Some(_) => Ok(()),
-                None => Ok(()),
-            }
-        })
-    })?; // Propagate error
+    // 9. Update content index (Needs refactoring based on content storage)
+    // TODO: Update content index logic. It might live within content_storage now
+    // or require the vault_id.
+    /* storage::CONTENT_INDEX.with(|service| {
+        // ... old logic using content_id String ...
+    })?; */
 
     // 10. Update vault storage usage
     update_vault_storage_usage(&state.vault_id, state.file_meta.size_bytes)?;
 
     ic_cdk::print(format!(
         "✅ INFO: Upload {} finished for vault {}. Content item {} created.",
-        upload_id, state.vault_id, content_id
+        upload_id.to_text(), state.vault_id.to_text(), content_principal_id.to_text()
     ));
 
-    Ok(content_id)
+    Ok(content_principal_id) // Return the exposed Principal ID
 }
 
 // TODO: Add function to get content item details

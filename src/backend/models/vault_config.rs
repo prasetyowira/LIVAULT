@@ -1,6 +1,6 @@
 // src/backend/models/vault_config.rs
 use crate::models::common::{PrincipalId, Timestamp, VaultId, VaultStatus};
-use candid::CandidType;
+use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
 // Define unlock condition sub-structs if needed, or keep simple for now
@@ -36,8 +36,8 @@ pub struct VaultConfig {
 impl Default for VaultConfig {
     fn default() -> Self {
         Self {
-            vault_id: String::new(),
-            owner: PrincipalId::anonymous(),
+            vault_id: Principal::anonymous(),
+            owner: Principal::anonymous(),
             name: String::from("My Vault"),
             description: None,
             status: VaultStatus::Draft,

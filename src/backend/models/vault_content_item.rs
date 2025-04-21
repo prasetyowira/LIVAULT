@@ -3,9 +3,14 @@ use crate::models::common::{ContentId, ContentType, Timestamp, VaultId};
 use candid::CandidType;
 use serde::{Deserialize, Serialize};
 
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, Default)]
 pub struct VaultContentItem {
-    pub content_id: ContentId, // Unique identifier for this content item
+    // Internal ID, used as primary key in storage, NOT exposed in API directly
+    #[serde(skip_serializing)]
+    pub internal_id: u64,
+
+    // Exposed ID (Principal)
+    pub content_id: ContentId,
     pub vault_id: VaultId,
     pub content_type: ContentType,
     pub title: Option<String>,     // User-provided title, e.g., "Last Will" or "Bank Passwords"
@@ -18,6 +23,7 @@ pub struct VaultContentItem {
 }
 
 // Implement Default if needed
+/*
 impl Default for VaultContentItem {
     fn default() -> Self {
         Self {
@@ -33,4 +39,5 @@ impl Default for VaultContentItem {
             payload_sha256: None,
         }
     }
-} 
+}
+*/ 

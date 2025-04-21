@@ -20,6 +20,17 @@ const BILLING_LOG_DATA_MEM_ID: MemoryId = MemoryId::new(10);
 const STAGING_BUFFER_MEM_ID: MemoryId = MemoryId::new(20);
 const CURSOR_MEM_ID: MemoryId = MemoryId::new(21);
 
+// IDs for Counters
+const TOKEN_COUNTER_MEM_ID: MemoryId = MemoryId::new(11);
+const CONTENT_COUNTER_MEM_ID: MemoryId = MemoryId::new(12);
+const UPLOAD_COUNTER_MEM_ID: MemoryId = MemoryId::new(13);
+// Reserve 14-19
+
+// IDs for Secondary Indexes (Principal -> u64)
+const TOKEN_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(22);
+const CONTENT_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(23);
+const UPLOAD_PRINCIPAL_IDX_MEM_ID: MemoryId = MemoryId::new(24);
+
 // Define memory type alias
 pub type Memory = VirtualMemory<DefaultMemoryImpl>;
 
@@ -80,6 +91,28 @@ pub fn get_billing_log_index_memory() -> Memory {
 
 pub fn get_billing_log_data_memory() -> Memory {
     get_memory(BILLING_LOG_DATA_MEM_ID)
+}
+
+// Functions for Counter Memories
+pub fn get_token_counter_memory() -> Memory {
+    get_memory(TOKEN_COUNTER_MEM_ID)
+}
+pub fn get_content_counter_memory() -> Memory {
+    get_memory(CONTENT_COUNTER_MEM_ID)
+}
+pub fn get_upload_counter_memory() -> Memory {
+    get_memory(UPLOAD_COUNTER_MEM_ID)
+}
+
+// Functions for Secondary Index Memories
+pub fn get_token_principal_idx_memory() -> Memory {
+    get_memory(TOKEN_PRINCIPAL_IDX_MEM_ID)
+}
+pub fn get_content_principal_idx_memory() -> Memory {
+    get_memory(CONTENT_PRINCIPAL_IDX_MEM_ID)
+}
+pub fn get_upload_principal_idx_memory() -> Memory {
+    get_memory(UPLOAD_PRINCIPAL_IDX_MEM_ID)
 }
 
 pub fn get_staging_buffer_memory() -> Memory {

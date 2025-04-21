@@ -51,15 +51,19 @@ thread_local! {
         StableBTreeMap::init(get_vault_members_memory())
     );
 
+    /* // Removed: Handled by storage/tokens.rs
     /// Invite Tokens: Key = token_id (String), Value = VaultInviteToken
     pub static INVITE_TOKENS: RefCell<StableBTreeMap<StorableString, StorableInviteToken, Memory>> = RefCell::new(
         StableBTreeMap::init(get_invite_tokens_memory())
     );
+    */
 
+    /* // Removed: Handled by storage/content.rs
     /// Content Items: Key = content_id (String), Value = VaultContentItem
     pub static CONTENT_ITEMS: RefCell<StableBTreeMap<StorableString, StorableContentItem, Memory>> = RefCell::new(
         StableBTreeMap::init(get_content_items_memory())
     );
+    */
 
     // --- Index Maps ---
 

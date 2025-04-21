@@ -2,12 +2,15 @@
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
-pub type VaultId = String;
-pub type MemberId = String;
-pub type InviteTokenId = String;
-pub type ContentId = String;
+// Define ID types using Principal where appropriate
+pub type VaultId = Principal;        // Unique identifier for a vault
+pub type MemberId = Principal;       // Principal of a vault member (owner, heir, witness)
+pub type InviteTokenId = Principal;  // Exposed unique ID for an invite token
+pub type ContentId = Principal;      // Exposed unique ID for a content item
+pub type UploadId = Principal;       // Exposed unique ID for an upload session
+pub type PrincipalId = Principal;    // General Principal identifier (can keep for clarity or remove if redundant)
+
 pub type Timestamp = u64; // Epoch seconds
-pub type PrincipalId = Principal;
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum VaultStatus {

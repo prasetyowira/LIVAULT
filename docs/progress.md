@@ -259,4 +259,47 @@ Implemented the ChainFusion payment adapter integration (Phase 7) and the DFX wo
 
 **Relevant Docs:**
 - [backend.architecture.md](plans/backend.architecture.md)
-- [tech.docs.md](plans/tech.docs.md) 
+- [tech.docs.md](plans/tech.docs.md)
+
+## Refactor: Internal IDs (ULID -> u64 + Principal) - 2024-07-27
+
+**Overview:**
+Initiated refactoring of internal identifiers for Invite Tokens, Content Items, and Upload Sessions. The previous approach using ULID-like strings generated via `utils::crypto::generate_ulid` presented potential Wasm compilation challenges and exposed internal details. The new strategy utilizes a dual-ID approach:
+
+1.  **Internal ID:** A `u64` auto-incrementing counter managed via `StableCell` for efficient storage, iteration, and time-based sorting.
+2.  **Exposed ID:** A unique `Principal` generated using `raw_rand` for use in all external APIs and user-facing contexts.
+
+This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](mdc:plans/refactor_internal_ids.plan.md).
+
+**Key Components to Implement/Modify:**
+
+*   `storage/memory.rs`: Define new `MemoryId`s for counters and secondary indexes.
+*   `storage/*`: Create modular storage logic (e.g., `storage/tokens.rs`) with counters, primary maps (`u64 -> Entity`), and secondary indexes (`Principal -> u64`).
+*   `models/common.rs`: Update ID type aliases (`InviteTokenId`, `ContentId`, etc.) to `Principal`.
+*   `models/*`: Update entity structs to use `Principal` IDs and add internal `u64` fields.
+*   `utils/crypto.rs`: Implement `generate_unique_principal` using `generate_random_bytes`; remove `generate_ulid`.
+*   `services/*`: Update logic for creation (get internal ID, generate Principal, store both, update index) and lookup/modification/deletion (use secondary index to find internal ID).
+*   `api.rs`: Update endpoint signatures and request/response structs to use `Principal` type aliases for IDs.
+
+**Dependencies:**
+
+*   `ic-cdk`
+*   `ic-stable-structures`
+*   `candid`
+*   `serde`
+
+**Relevant Docs:**
+
+*   Plan: [`plans/refactor_internal_ids.plan.md`](mdc:plans/refactor_internal_ids.plan.md)
+*   Architecture: [`plans/backend.architecture.md`](mdc:plans/backend.architecture.md)
+
+**Progress Log:**
+
+*   **Step 1 (Memory IDs):** Completed adding new MemoryIDs and getters to `storage/memory.rs`.
+*   **Step 2 (Storage Structures):** Completed creating modular storage files (`tokens.rs`, `content.rs`, `uploads.rs`) with counters, primary maps, secondary indexes, and helper functions. Updated `storage/mod.rs` and cleaned up `storage/structures.rs`.
+*   **Step 3 (Model Structs & ID Types):** Completed updating ID type aliases in `models/common.rs` and modified relevant model structs (`VaultInviteToken`, `VaultContentItem`, `VaultConfig`, `VaultMember`) to use Principal types and include internal IDs.
+*   **Step 4 (Principal Generation Utility):** Completed adding `generate_unique_principal` and removing `generate_ulid` in `utils/crypto.rs`.
+*   **Step 5 (Service Logic - Creation):** Completed updating creation logic in `invite_service.rs` (`generate_new_invite`) and `upload_service.rs` (`finish_chunked_upload`, `begin_chunked_upload`).
+*   **Step 6 (Service Logic - Lookup/Mod/Del):** Completed updating lookup/modification logic in `invite_service.rs` (`claim_existing_invite`, `revoke_invite_token`). Other services (`vault_service`, `upload_service`) still need updates for lookup/delete operations based on Principal IDs.
+*   **Step 7 (API Layer):** Completed updating function signatures and request/response structs in `api.rs` to use Principal-based ID types.
+*   **Next:** Review changes, address TODOs, compile, and test. 
