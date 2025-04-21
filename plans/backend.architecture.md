@@ -16,31 +16,31 @@
 
 ---
 
-## 1. Goals & Non‑Goals
+## 1. Goals & Non‑Goals
 | Objective | In Scope | Out of Scope |
 |-----------|----------|--------------|
 | Deterministic vault lifecycle logic (create → active → unlock → purge) | ✔ | Front‑end components |
 | End‑to‑end encryption & Shamir key‑share issuance | ✔ | Off‑chain key recovery services |
-| Single‑canister MVP with predictable costs (≤ 4 GB stable memory) | ✔ | Multi‑canister horizontal sharding |
-| Low latency (P99 < 250 ms @ 5 RPS) | ✔ | > 50 RPS scaling tier |
+| Single‑canister MVP with predictable costs (≤ 4 GB stable memory) | ✔ | Multi‑canister horizontal sharding |
+| Low latency (P99 < 250 ms @ 5 RPS) | ✔ | > 50 RPS scaling tier |
 | Ledger‑verified one‑time payments & upgrades | ✔ | Recurring subscriptions |
 
 ---
 
-## 2. High‑Level Component Diagram
+## 2. High‑Level Component Diagram
 ```mermaid
 graph LR
     subgraph Client
-        FE["React + agent‑js\n(Frontend Canister)"]
+        FE["React + agent‑js\n(Frontend Canister)"]
     end
     subgraph ICP Network
-        BE["Backend Canister\n(Rust WASM)"]
-        SM["Stable Memory\n(ic‑stable‑structures)"]
+        BE["Backend Canister\n(Rust WASM)"]
+        SM["Stable Memory\n(ic‑stable‑structures)"]
     end
     subgraph OffChain
-        CF[Cloudflare Worker\nCron 02:00 UTC]
-        Pay["Payment Adapter\n(init/verify)"]
-        Ledger[ICP Ledger]
+        CF[Cloudflare Worker\nCron 02:00 UTC]
+        Pay["Payment Adapter\n(init/verify)"]
+        Ledger[ICP Ledger]
     end
 
     FE -- Candid calls --> BE
@@ -50,7 +50,7 @@ graph LR
     Pay -- session --> FE
     FE -. wallet transfer .-> Ledger
     FE -- verify_payment --> Pay
-    Pay -- tx result --> FE
+    Pay -- tx result --> FE
     FE -- create_vault --> BE
 ```
 
@@ -108,7 +108,7 @@ src/backend/
 
 ---
 
-## 3. Detailed **Data‑Flow** (Happy Path)
+## 3. Detailed **Data‑Flow** (Happy Path)
 1. **init_payment**
    1. Front‑end collects plan inputs, age, and storage tier.
    2. `init_payment` returns a `PaymentSession` with a unique principal address.
@@ -128,7 +128,7 @@ src/backend/
 7. **claim_invite**
    1. Invitee authenticates via II, sets passphrase.
    2. Canister converts token → **VaultMember** (status=`active`), updates quorum counters.
-8. **finalize_setup** sets status=`ACTIVE` once ≥ 1 claimed heir.
+8. **finalize_setup** sets status=`ACTIVE` once ≥ 1 claimed heir.
 9. **Runtime Ops**
    * **upload_content**, **update_vault**, **get_vault** all operate on Stable‑Memory maps.
    * All responses include `ic_cdk::api::call::reply` with CBOR payloads for deterministic decoding.
@@ -178,44 +178,62 @@ sequenceDiagram
 
 ---
 
-## 4. Stable Memory **Storage Layout**
+## 4. Stable Memory **Storage Layout**
 > Powered by `ic-stable-structures` up to 4 GB, deterministic B‑Tree indexes and `ciborium 0.2.2`.
 
 | Segment | Key | Value Type | Description |
 |---------|-----|-----------|-------------|
-| **Vaults** | `vault:<vault_id>` | `VaultConfig` | Primary metadata & state machine. |
-| **Members** | `member:<vault_id>:<member_id>` | `VaultMember` | All heirs & witness profiles. |
-| **Invite Tokens** | `token:<token_id>` | `VaultInviteToken` | One‑time tokens with TTL. |
-| **Content List** | `content_idx:<vault_id>` | `Vec<ContentId>` | Ordered list per vault. |
-| **Content Item** | `content:<content_id>` | `VaultContentItem` | Encrypted payload blob. |
-| **Upload Staging** | `upload:<upload_id>:chunk<n>` | `Vec<u8>` | Temporarily holds encrypted chunks until `finish_upload`. Auto‑GC after 24 h. |
-| **Approvals** | `approval:<vault_id>` | bitset (u16) | Bitmask of heir/witness approvals for O(1) quorum check. |
-| **Audit Logs** | `audit:<vault_id>` | `Vec<LogEvent>` | Append‑only; capped via sliding window (365 d). |
+| **Vaults** | `vault:<vault_principal_str>` | `VaultConfig` | Primary metadata & state machine. Key is the vault's Principal (textual representation). |
+| **Members** | `member:<vault_principal_str>:<member_principal_str>` | `VaultMember` | All heirs & witness profiles. Key includes vault Principal and member Principal. |
+| **Invite Tokens** | `token_internal:<internal_token_id_u64>` | `VaultInviteToken` | Primary storage for tokens, keyed by internal auto-increment ID for efficient iteration (e.g., expiry checks). The `VaultInviteToken` struct contains the *exposed* `Principal` ID. |
+| **Content List** | `content_idx:<vault_principal_str>` | `Vec<u64>` | Ordered list of *internal* content IDs per vault. |
+| **Content Item** | `content_internal:<internal_content_id_u64>` | `VaultContentItem` | Primary storage for content items, keyed by internal auto-increment ID. The `VaultContentItem` struct contains the *exposed* `Principal` ID. |
+| **Upload Staging** | `upload_internal:<internal_upload_id_u64>:chunk<n>` | `Vec<u8>` | Temporarily holds encrypted chunks, keyed by internal auto-increment ID. Auto‑GC after 24 h. An associated structure likely holds the *exposed* `Principal` ID for the upload session. |
+| **Approvals** | `approval:<vault_principal_str>` | bitset (u16) | Bitmask of heir/witness approvals for O(1) quorum check. |
+| **Audit Logs** | `audit:<vault_principal_str>` | `Vec<LogEvent>` | Append‑only; capped via sliding window (365 d). |
 | **Metrics** | `metrics` | `VaultMetrics` | Aggregate counters for admin dashboard. |
+| **Secondary Index: Token Principal -> Internal ID** | `token_principal_idx:<token_principal_bytes>` | `u64` | Maps exposed token Principal (byte representation) to internal `u64` ID for API lookups. |
+| **Secondary Index: Content Principal -> Internal ID** | `content_principal_idx:<content_principal_bytes>` | `u64` | Maps exposed content Principal (byte representation) to internal `u64` ID for API lookups. |
+| **Secondary Index: Upload Principal -> Internal ID** | `upload_principal_idx:<upload_principal_bytes>` | `u64` | Maps exposed upload session Principal (byte representation) to internal `u64` ID for API lookups. |
 
-### Key Generation
-* All primary keys are **ULID** (time‑sortable) to optimize compaction sweeps.
-* Content IDs embed vault ULID prefix → locality boosts sequential reads for vault exports.
+### Key Generation & ID Strategy
+* **`vault_id`**: A unique `Principal` identifying the vault canister itself or a derived identity. Used directly in keys involving the vault.
+* **`member_id`**: The `Principal` of the user (Heir or Witness).
+* **`token_id`, `content_id`, `upload_id` (Dual ID Strategy):**
+   * **Internal ID**: A `u64` auto-incrementing counter stored in stable memory (`StableCell`). Used as the primary key in stable storage for efficient iteration and time-based sorting (e.g., purging expired tokens).
+   * **Exposed ID**: A unique `Principal` generated using `raw_rand` via the canister's custom RNG. This `Principal` is stored *within* the entity's struct (`VaultInviteToken`, `VaultContentItem`, etc.) and is used in all external API interactions.
+   * **Secondary Index**: A mapping (`Principal` bytes -> `u64`) is maintained in stable memory to allow efficient lookups based on the exposed `Principal` provided via API calls.
+* **Rationale**: This dual approach keeps internal storage operations efficient and ordered using `u64` keys while providing robust, unique `Principal` identifiers for external APIs, avoiding the exposure of internal sequential IDs.
+* **Trade-offs**: This strategy increases storage overhead (storing both IDs + secondary index) and adds complexity (generating Principals, maintaining indices, extra lookup step for API calls).
 
 ### Compaction & Retention
 * `daily_maintenance` invokes `compact_logs(vault_id)` – retains last N or ≤ `log_retention_days`.
-* Upload‑staging segments older than 24 h are purged to free memory.
+* Upload‑staging segments older than 24 h are purged based on their internal `u64` ID timestamps (assuming the counter reflects time roughly).
 * `EXPIRED` vaults older than 30 d are deleted wholesale, freeing all sub‑keys.
 
 ### Index Helpers
 ```rust
-pub fn vault_prefix(vault_id: &str) -> Vec<u8> {
-    format!("vault:{}", vault_id).into_bytes()
+// Example assuming textual representation for vault principal in keys
+pub fn vault_prefix(vault_principal_str: &str) -> Vec<u8> {
+    format!("vault:{}", vault_principal_str).into_bytes()
 }
 
-pub fn content_prefix(vault_id: &str) -> Vec<u8> {
-    format!("content_idx:{}", vault_id).into_bytes()
+// Example for accessing internal token data by internal ID
+pub fn token_internal_key(internal_token_id: u64) -> Vec<u8> {
+    format!("token_internal:{}", internal_token_id).into_bytes()
+}
+
+// Example for accessing the secondary index by Principal bytes
+pub fn token_principal_index_key(token_principal_bytes: &[u8]) -> Vec<u8> {
+    let mut key = b"token_principal_idx:".to_vec();
+    key.extend_from_slice(token_principal_bytes);
+    key
 }
 ```
 
 ---
 
-## 5. Cost & Cycle Projection
+## 5. Cost & Cycle Projection
 
 > **Currency:** `1 ICP ≈ 1 × 10¹² cycles` (April 2025 NNS minting rate)  
 > **Storage tariff:** `127 cycles / byte / day` (IC mainnet schedule).  
@@ -268,7 +286,7 @@ Standard Plan uptake (10 MiB each)
 
 ---
 
-## 6. API Endpoint
+## 6. API Endpoint
 
 ### LiVault API Endpoint List
 

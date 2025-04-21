@@ -1,10 +1,18 @@
 {
     "$schema": "http://json-schema.org/draft-07/schema#",
     "title": "VaultInviteToken",
+    "description": "Represents a single-use invite token for joining a vault.",
     "type": "object",
     "properties": {
-      "token_id": {"type": "string"},
-      "vault_id": {"type": "string"},
+      "tokenId": {
+        "description": "The unique identifier for this invite token (exposed ID). This is an Internet Computer Principal identifier represented as a string.",
+        "type": "string",
+        "examples": ["ccccc-ccccc-ccccc-ccccc-ccccc-ccccc-ccccc-ccccc-ccccc-ccccc-ccc"]
+      },
+      "vaultId": {
+        "description": "The Principal identifier (string) of the vault this token is for.",
+        "type": "string"
+      },
       "role": {"type": "string","enum":["heir","witness"]},
       "token": {"type": "string"},
       "created_at": {"type": "integer"},
@@ -45,6 +53,6 @@
         "additionalProperties": false
       }
     },
-    "required": ["token_id","vault_id","role","token","created_at","expires_at","status","invited_by","metadata","claim_info","security"],
+    "required": ["tokenId","vaultId","role","token","created_at","expires_at","status","invited_by","metadata","claim_info","security"],
     "additionalProperties": false
   }

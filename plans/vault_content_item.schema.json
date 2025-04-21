@@ -1,8 +1,18 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "VaultContentItem",
+  "description": "Represents a single encrypted item stored within a vault.",
   "type": "object",
   "properties": {
+    "contentId": {
+      "description": "The unique identifier for this content item (exposed ID). This is an Internet Computer Principal identifier represented as a string.",
+      "type": "string",
+      "examples": ["bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbbbb-bbb"]
+    },
+    "vaultId": {
+      "description": "The Principal identifier (string) of the vault this content belongs to.",
+      "type": "string"
+    },
     "id": { "type": "string" },
     "type": {
       "type": "string",
