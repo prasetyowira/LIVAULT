@@ -38,4 +38,14 @@ pub fn get_all_billing_entries() -> Vec<BillingEntry> {
     })
 }
 
-// TODO: Add function to query billing log entries with pagination
+/// Function to query billing log entries with pagination.
+pub fn query_billing_entries(offset: usize, limit: usize) -> Vec<BillingEntry> {
+    BILLING_LOG.with(|log| {
+        log.borrow()
+            .iter()
+            .skip(offset)
+            .take(limit)
+            .map(|cbor_entry| cbor_entry.0)
+            .collect()
+    })
+}
