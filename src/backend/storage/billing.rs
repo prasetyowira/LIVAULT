@@ -38,4 +38,4 @@ pub fn get_all_billing_entries() -> Vec<BillingEntry> {
     })
 }
 
-// TODO: Add function to query billing log entries with filtering/pagination if needed. 
+// TODO: Add function to query billing log entries with pagination

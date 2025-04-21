@@ -50,5 +50,3 @@ pub fn remove_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
             .map(|cbor| cbor.0)
     })
 }
-
-// TODO: Add other helper functions if needed, e.g., for listing or iteration.

@@ -102,5 +102,3 @@ pub fn update_content(internal_id: u64, updated_item: VaultContentItem) -> Resul
        }
    })
 }
-
-// TODO: Add function to update content item (if needed), ensuring secondary index is handled. 
