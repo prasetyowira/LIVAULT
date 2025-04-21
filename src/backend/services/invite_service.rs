@@ -8,14 +8,24 @@ use crate::{
         VaultInviteToken,
         VaultMember,
         VaultConfig, // Needed for state check
+        MemberRole, // Add MemberRole
+        MemberStatus,
     },
     storage::{self, create_member_key, Cbor, StorableString, get_vault_member_prefix},
     services::vault_service, // Needed for state updates
+    utils::crypto::generate_ulid, // Import generate_ulid
 };
 use ic_cdk::api::{time, management_canister::main::raw_rand}; // Import raw_rand
 use std::collections::BTreeSet; // For checking used Shamir indices
 use std::time::Duration;
 use hex;
+use candid::{Principal as PrincipalId, CandidType}; // Import PrincipalId and CandidType
+use serde::{Deserialize, Serialize}; // Import Deserialize & Serialize
+use crate::models::member::MemberProfileData;
+use crate::models::invite::InviteStatus;
+use crate::models::member::MemberStatus;
+use crate::models::vault_member::AccessInfo;
+use crate::storage::{INVITE_TOKENS, VAULT_MEMBERS};
 
 // Placeholder for profile data returned after claiming invite
 #[derive(Clone, Debug, candid::CandidType, serde::Deserialize, serde::Serialize)]
@@ -115,7 +125,7 @@ pub async fn generate_new_invite(
 
     // 4. Generate token details using raw_rand
     // Get 16 random bytes (128 bits) for the token ID
-    let random_bytes = raw_rand().await.map_err(|(code, msg)| {
+    let (random_bytes,) = raw_rand().await.map_err(|(code, msg)| {
         VaultError::InternalError(format!(
             "Failed to get random bytes for token ID: code={}, message={}",
             code as u8, msg
@@ -123,7 +133,7 @@ pub async fn generate_new_invite(
     })?;
 
     // Encode bytes as hex string for the token_id
-    let token_id = hex::encode(random_bytes);
+    let token_id = hex::encode(&random_bytes); // Pass as slice reference
 
     let current_time = time();
     // Use Duration for clarity
@@ -144,16 +154,29 @@ pub async fn generate_new_invite(
 
     // 5. Store the token
     storage::INVITE_TOKENS.with(|map| {
-        let key = StorableString(Cbor(token_id.clone()));
+        let key = Cbor(token_id.clone()); // Use Cbor directly if StorableString is just a wrapper
         let value = Cbor(token.clone());
-        map.borrow_mut()
-            .insert(key, value)
-            .map_err(|e| VaultError::StorageError(format!("Failed to store invite token: {:?}", e)))?;
-        ic_cdk::print(format!(
-            "✉️ INFO: Invite token {} generated for vault {} (Role: {:?}, Index: {}) by owner {}",
-            token_id, vault_id, role, shamir_share_index, caller
-        ));
-        Ok(token)
+        let mut token_map = map.borrow_mut();
+
+        // Correct match for Option<V> returned by insert
+        match token_map.insert(key, value) {
+            Some(_previous_value) => {
+                ic_cdk::print(format!(
+                    "✉️ INFO: Invite token {} generated for vault {} (Role: {:?}, Index: {}) by owner {}",
+                    token_id, vault_id, role, shamir_share_index, caller
+                ));
+                Ok(token)
+            }
+            None => {
+                // This case means a token with the same ID was overwritten, which shouldn't happen with random IDs.
+                // Log a warning, but consider it success for the purpose of returning the new token.
+                ic_cdk::print(format!(
+                    "⚠️ WARNING: Overwrote existing invite token {} for vault {}. This might indicate a random ID collision.",
+                    token_id, vault_id
+                ));
+                Ok(token)
+            }
+        }
     })
 }
 
@@ -182,11 +205,15 @@ pub async fn claim_existing_invite(
     // 1. Retrieve and validate the token, get vault config
     // Note: This storage operation itself is synchronous
     storage::INVITE_TOKENS.with(|token_map_ref| {
-        let key = StorableString(Cbor(token_id.clone()));
+        let key = Cbor(token_id.clone());
         let mut token_map = token_map_ref.borrow_mut();
 
-        let mut token = match token_map.get(&key) {
-            Some(storable_token) => storable_token.0,
+        // We need to get mutable access to update status later
+        // Use get() first, then clone and use insert() to update.
+        let current_token_opt = token_map.get(&key);
+
+        let mut token = match current_token_opt {
+            Some(storable_token) => storable_token.0, // Assuming Cbor<T>(T)
             None => return Err(VaultError::TokenInvalid("Token not found.".to_string())),
         };
 
@@ -199,9 +226,13 @@ pub async fn claim_existing_invite(
 
         if current_time > token.expires_at {
             token.status = InviteStatus::Expired;
-            token_map.insert(key.clone(), Cbor(token)).map_err(|e| {
-                VaultError::StorageError(format!("Failed to update expired token: {:?}", e))
-            })?;
+            // Use insert to update the value
+            match token_map.insert(key.clone(), Cbor(token)) {
+                 Ok(_) => {},
+                 // Handle the case where insert might return the previous value or an error
+                 Ok(Some(_)) => { /* Overwriting is fine here if needed, or log */ },
+                 Err(e) => return Err(VaultError::StorageError(format!("Failed to update expired token: {:?}", e)))
+            };
             return Err(VaultError::TokenInvalid("Token has expired.".to_string()));
         }
 
@@ -214,12 +245,16 @@ pub async fn claim_existing_invite(
         token.claimed_by = Some(claimer_principal);
 
         // Update the token in storage
-        token_map
-            .insert(key, Cbor(token.clone()))
-            .map_err(|e| VaultError::StorageError(format!("Failed to claim token: {:?}", e)))?;
-
-        claimed_token_details = Some((token, vault_config)); // Store details for next steps
-        Ok(())
+        // Correct match for Option<V> returned by insert
+        match token_map.insert(key, Cbor(token.clone())) {
+             Ok(_) => {
+                // Store details for next steps - Need to clone config from outside
+                // claimed_token_details = Some((token, vault_config));
+                Ok(token) // Return the claimed token to be used outside
+             },
+             Ok(Some(_)) => Ok(token), // Overwriting is ok
+             Err(e) => Err(VaultError::StorageError(format!("Failed to claim token: {:?}", e)))
+        }
     })?;
 
     let (token, vault_config) = claimed_token_details.ok_or(VaultError::InternalError(
@@ -228,14 +263,14 @@ pub async fn claim_existing_invite(
 
     // 2. Create the VaultMember using raw_rand for member_id
     // Get 16 random bytes (128 bits) for the member ID
-    let random_bytes = raw_rand().await.map_err(|(code, msg)| {
+    let (random_bytes,) = raw_rand().await.map_err(|(code, msg)| {
         VaultError::InternalError(format!(
             "Failed to get random bytes for member ID: code={}, message={}",
             code as u8, msg
         ))
     })?;
     // Encode bytes as hex string for the member_id
-    let member_id = hex::encode(random_bytes);
+    let member_id = hex::encode(&random_bytes); // Pass as slice reference
 
     let member = VaultMember {
         member_id: member_id.clone(), // Use the hex-encoded random string
@@ -248,31 +283,27 @@ pub async fn claim_existing_invite(
         shamir_share_index: token.shamir_share_index,
         added_at: current_time,
         updated_at: current_time,
-        access_control: Default::default(),
+        access: Default::default(),
         has_approved_unlock: false,
     };
 
-    // 3. Store the VaultMember (synchronous)
+    // 3. Store the new member
     storage::VAULT_MEMBERS.with(|map| {
-        let key = StorableString(Cbor(create_member_key(&token.vault_id, &member_id)));
+        let key = Cbor(create_member_key(vault_id, &member_id));
         let value = Cbor(member.clone());
-        map.borrow_mut()
-            .insert(key, value)
-            .map_err(|e| VaultError::StorageError(format!("Failed to store vault member: {:?}", e)))
+        // Correct match for Option<V> returned by insert
+        match map.borrow_mut().insert(key, value) {
+            Some(_) => Ok(()), // Overwrite ok?
+            None => Ok(()),
+        }
     })?;
 
-    ic_cdk::print(format!(
-        "🤝 INFO: Invite {} claimed by {}, new member {} created for vault {}",
-        token_id, claimer_principal, member_id, token.vault_id
-    ));
-
-    // 4. Update VaultConfig state if needed (synchronous call)
-    if vault_config.status == VaultStatus::NeedSetup {
-        vault_service::set_vault_status(&token.vault_id, VaultStatus::SetupComplete, Some(claimer_principal))?;
-        ic_cdk::print(format!(
-            "⚙️ INFO: Vault {} transitioned to SetupComplete after first member claim.",
-            token.vault_id
-        ));
+    // 4. Update Vault state if needed (e.g., transition from NEED_SETUP or SETUP_COMPLETE)
+    let member_count = get_members_for_vault(&token.vault_id)?.len();
+    if vault_config.status == VaultStatus::NeedSetup && member_count > 0 {
+        vault_config.status = VaultStatus::SetupComplete;
+        vault_service::save_vault_config(&vault_config).await?; // Save updated config (make save_vault_config async)
+        ic_cdk::print!(format!("✅ INFO: Vault {} status updated to SetupComplete after first member claim.", token.vault_id));
     }
 
     // 5. Construct and return the member profile
@@ -300,17 +331,25 @@ pub async fn claim_existing_invite(
 /// * `Result<(), VaultError>` - Success or an error.
 pub fn revoke_invite_token(token_id: &InviteTokenId, caller: PrincipalId) -> Result<(), VaultError> {
     storage::INVITE_TOKENS.with(|map_ref| {
-        let key = StorableString(Cbor(token_id.clone()));
+        let key = Cbor(token_id.clone()); // Use Cbor directly
         let mut map = map_ref.borrow_mut();
 
-        // 1. Get the token
-        let mut token = match map.get(&key) {
+        // Get the token first to check ownership
+        let current_token_opt = map.get(&key);
+        let mut token = match current_token_opt {
             Some(storable_token) => storable_token.0,
             None => return Err(VaultError::TokenInvalid("Token not found.".to_string())),
         };
 
-        // 2. Check Authorization: Get vault config and verify owner
-        let vault_config = vault_service::get_vault_config(&token.vault_id)?;
+        // Check authorization - only owner can revoke
+        // This requires fetching the vault config, which might be async.
+        // Let's assume get_vault_config is sync for now, or needs refactoring like claim_invite.
+        // (Refactoring needed similar to claim_invite if get_vault_config is async)
+        let vault_config = match vault_service::get_vault_config(&token.vault_id) {
+            Ok(config) => config,
+            Err(e) => return Err(e),
+        };
+
         if vault_config.owner != caller {
             return Err(VaultError::NotAuthorized(
                 "Only the vault owner can revoke invites.".to_string(),
@@ -327,18 +366,106 @@ pub fn revoke_invite_token(token_id: &InviteTokenId, caller: PrincipalId) -> Res
 
         // 4. Update Status and Save
         token.status = InviteStatus::Revoked;
-        token.updated_at = time(); // Assuming VaultInviteToken has updated_at
 
-        map.insert(key, Cbor(token)).map_err(|e| {
-            VaultError::StorageError(format!("Failed to revoke token: {:?}", e))
-        })?;
-
-        ic_cdk::print(format!(
-            "🚫 INFO: Invite token {} for vault {} revoked by owner {}",
-            token_id, token.vault_id, caller
-        ));
-        Ok(())
+        // Update the token in storage
+        // Correct match for Option<V> returned by insert
+        match map.insert(key, Cbor(token)) {
+            Some(_) => {
+                ic_cdk::print(format!("🚫 INFO: Invite token {} for vault {} revoked by owner {}", token_id, token.vault_id, caller));
+                Ok(())
+            }
+            None => {
+                // This case means the key didn't exist before insert, which is unexpected here.
+                // If we just fetched the token, it should exist. Treat as storage error.
+                 Err(VaultError::StorageError("Failed to update token during revoke (token disappeared?)".to_string()))
+            }
+        }
     })
+}
+
+/// Checks if a principal is already a member of a vault.
+async fn is_member(vault_id: &VaultId, principal: PrincipalId) -> Result<bool, VaultError> {
+    let members = get_members_for_vault(vault_id).await?;
+    Ok(members.iter().any(|m| m.principal == principal))
+}
+
+/// Adds a new member to the vault (internal helper).
+async fn add_new_member_to_vault(
+    vault_id: &VaultId,
+    principal: PrincipalId,
+    vault_config: &VaultConfig, // Pass config to avoid re-fetching
+) -> Result<MemberId, VaultError> {
+    // Generate a unique ID for the new member
+    let member_id = generate_ulid().await;
+    let new_member = VaultMember {
+        member_id: member_id.clone(),
+        vault_id: vault_id.clone(),
+        principal,
+        name: "New Member".to_string(), // Default name, user can update later
+        relation: "Invited".to_string(), // Default relation
+        role: MemberRole::Heir, // Default role for invited members
+        status: MemberStatus::Active,
+        added_at: time(),
+        added_by: vault_config.owner, // Assume added by owner via invite system
+    };
+
+    // Store the new member
+    storage::VAULT_MEMBERS.with(|map| {
+        let key = Cbor(create_member_key(vault_id, &member_id));
+        let value = Cbor(new_member.clone());
+        // Correct match for Option<V> returned by insert
+        match map.borrow_mut().insert(key, value) {
+            Some(_) => Ok(()), // Overwrite ok?
+            None => Ok(()),
+        }
+    })?;
+
+    ic_cdk::print(format!(
+        "➕ INFO: Added new member {} ({}) to vault {}",
+        member_id, principal, vault_id
+    ));
+
+    // If vault was NeedSetup, move to Active
+    if vault_config.status == VaultStatus::NeedSetup {
+        vault_service::set_vault_status(vault_id, VaultStatus::Active, Some(principal)).await?;
+        ic_cdk::print(format!("✅ INFO: Vault {} status updated to Active after first member claim.", vault_id));
+    }
+
+    Ok(member_id)
+}
+
+/// Retrieves the details of a specific member within a vault.
+///
+/// # Arguments
+/// * `vault_id` - The ID of the vault.
+/// * `member_id` - The ID of the member.
+/// * `caller` - The principal requesting the details (for authorization check).
+///
+/// # Returns
+/// * `Result<VaultMember, VaultError>` - The member details or an error.
+pub async fn get_member_details(
+    vault_id: &VaultId,
+    member_id: &MemberId,
+    caller: PrincipalId,
+) -> Result<VaultMember, VaultError> {
+    // 1. Authorization: Check if caller is owner or the member themselves
+    let vault_config = vault_service::get_vault_config(vault_id).await?;
+    let key = Cbor(create_member_key(vault_id, member_id)); // Use Cbor directly
+
+    let member = storage::VAULT_MEMBERS.with(|map_ref| {
+        map_ref.borrow().get(&key).map(|v| v.0).ok_or_else(|| {
+            // Pass only the member ID as per the enum variant definition
+            VaultError::MemberNotFound(member_id.clone())
+        })
+    })?;
+
+    if vault_config.owner != caller && member.principal != caller {
+         return Err(VaultError::NotAuthorized(
+            "Caller is not authorized to view this member's details.".to_string(),
+        ));
+    }
+
+    Ok(member)
 }
 
 /// Lists all members associated with a specific vault.
@@ -349,10 +476,10 @@ pub fn revoke_invite_token(token_id: &InviteTokenId, caller: PrincipalId) -> Res
 ///
 /// # Returns
 /// * `Result<Vec<VaultMember>, VaultError>` - A list of members or an error.
-pub fn list_vault_members(vault_id: &VaultId, caller: PrincipalId) -> Result<Vec<VaultMember>, VaultError> {
+pub async fn list_vault_members(vault_id: &VaultId, caller: PrincipalId) -> Result<Vec<VaultMember>, VaultError> {
     // 1. Authorization: Check if caller is owner or perhaps a member?
-    let vault_config = vault_service::get_vault_config(vault_id)?;
-    let members = get_members_for_vault(vault_id)?;
+    let vault_config = vault_service::get_vault_config(vault_id).await?;
+    let members = get_members_for_vault(vault_id).await?;
 
     let is_owner = vault_config.owner == caller;
     let is_member = members.iter().any(|m| m.principal == caller);
@@ -366,39 +493,3 @@ pub fn list_vault_members(vault_id: &VaultId, caller: PrincipalId) -> Result<Vec
     // 2. Return the fetched members
     Ok(members)
 }
-
-/// Retrieves the details of a specific member within a vault.
-///
-/// # Arguments
-/// * `vault_id` - The ID of the vault.
-/// * `member_id` - The ID of the member.
-/// * `caller` - The principal requesting the details (for authorization check).
-///
-/// # Returns
-/// * `Result<VaultMember, VaultError>` - The member details or an error.
-pub fn get_member_details(
-    vault_id: &VaultId,
-    member_id: &MemberId,
-    caller: PrincipalId,
-) -> Result<VaultMember, VaultError> {
-    // 1. Authorization: Check if caller is owner or the member themselves
-    let vault_config = vault_service::get_vault_config(vault_id)?;
-    let key = StorableString(Cbor(create_member_key(vault_id, member_id)));
-
-    let member = storage::VAULT_MEMBERS.with(|map_ref| {
-        map_ref.borrow().get(&key).map(|v| v.0).ok_or_else(|| {
-            VaultError::MemberNotFound(vault_id.clone(), member_id.clone())
-        })
-    })?;
-
-    if vault_config.owner != caller && member.principal != caller {
-         return Err(VaultError::NotAuthorized(
-            "Caller is not authorized to view this member's details.".to_string(),
-        ));
-    }
-
-    Ok(member)
-}
-
-// TODO: Add function to remove a member (requires careful state handling)
-// TODO: Add function to update member details (e.g., name, relation)

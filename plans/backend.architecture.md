@@ -56,6 +56,58 @@ graph LR
 
 ---
 
+## 2.1 Project Structure (Backend Canister - Rust)
+The backend canister code, located in `src/backend/`, follows a modular structure:
+
+```
+src/backend/
+├── Cargo.toml          # Project dependencies and metadata
+├── lib.rs              # Canister entry point (init, post_upgrade, heartbeat)
+├── api.rs              # Defines public Candid endpoints (query/update functions)
+├── error.rs            # Custom error types for the canister (VaultError enum)
+├── metrics.rs          # Logic for collecting and exposing canister metrics
+├── models/             # Data structures & domain models (Vault, Member, etc.)
+│   ├── common.rs       # Shared types (IDs, Timestamps, Roles, Status enums)
+│   ├── vault_config.rs # VaultConfig struct and related types
+│   ├── vault_member.rs # VaultMember struct and related types
+│   ├── vault_invite_token.rs # VaultInviteToken struct
+│   └── vault_content_item.rs # VaultContentItem struct
+│   └── payment.rs      # PaymentSession struct and PayMethod enum
+│   └── billing.rs      # BillingEntry struct
+│   └── ... (other models)
+├── services/           # Business logic modules encapsulating specific functionalities
+│   ├── vault_service.rs    # Core vault management logic (create, update, get)
+│   ├── invite_service.rs   # Invitation generation and claiming logic
+│   ├── upload_service.rs   # Chunked file upload handling
+│   ├── payment_service.rs  # Payment session management and verification
+│   ├── scheduler_service.rs # Logic for daily maintenance tasks
+│   └── ... (other services)
+├── storage/            # Stable memory management and data persistence logic
+│   ├── structures.rs   # Defines stable BTreeMaps and Vecs using ic-stable-structures
+│   ├── storable.rs     # Wrapper types (e.g., Cbor<T>) for stable storage
+│   ├── memory.rs       # Memory manager setup
+│   ├── keys.rs         # Helper functions for generating storage keys/prefixes
+│   └── cursor.rs       # Cursor logic for pagination (if used)
+├── utils/              # Common utilities and helpers
+│   ├── crypto.rs       # Cryptographic helpers (hashing, random generation)
+│   ├── guards.rs       # Access control guard functions (admin, cron)
+│   ├── rate_limit.rs   # Rate limiting implementation (token bucket)
+│   └── ... (other utils)
+├── adapter/            # Interfaces for external integrations (e.g., ChainFusion)
+│   └── chainfusion_adapter.rs # Logic for interacting with ChainFusion API
+└── rust-toolchain.toml # Specifies the Rust toolchain version
+```
+
+- **`lib.rs`**: Initializes the canister state and stable memory.
+- **`api.rs`**: Exposes functions callable via Candid interface. Handles request validation and delegates to services.
+- **`models/`**: Contains plain data structures, often deriving `CandidType`, `Serialize`, `Deserialize`.
+- **`services/`**: Implements the core business logic, interacting with models and storage.
+- **`storage/`**: Abstracts stable memory operations using `ic-stable-structures`.
+- **`utils/`**: Provides reusable helper functions like guards, crypto operations, etc.
+- **`adapter/`**: Contains code for interacting with external systems or canisters (like ChainFusion).
+
+---
+
 ## 3. Detailed **Data‑Flow** (Happy Path)
 1. **init_payment**
    1. Front‑end collects plan inputs, age, and storage tier.
@@ -65,10 +117,10 @@ graph LR
    1. Front‑end polls `verify_payment(session_id)`.
    2. Payment adapter checks Ledger; on match, returns *success*.
 4. **create_vault**
-   1. Back‑end issues ULID `vault_id`, persists **VaultConfig** (status=`DRAFT`).
+   1. Back‑end issues unique id using `ic_principal` for `vault_id`, persists **VaultConfig** (status=`DRAFT`).
    2. Immediately transitions to `NEED_SETUP`.
 5. **Continue Setup**
-   1. Owner uploads encrypted items with the 3‑phase chunk API (`begin_upload` → `upload_chunk*` → `finish_upload`).
+   1. Owner uploads encrypted items with the 3‑phase chunk API (`begin_upload` → `upload_chunk*` → `finish_upload`).
    2. Each finished upload emits a **VaultContentItem** record; file chunks are staged until checksum verified.
 6. **generate_invite** for heirs & witness
    1. Back‑end allocates next free Shamir index, stores **VaultInviteToken**.
@@ -81,7 +133,7 @@ graph LR
    * **upload_content**, **update_vault**, **get_vault** all operate on Stable‑Memory maps.
    * All responses include `ic_cdk::api::call::reply` with CBOR payloads for deterministic decoding.
 10. **Unlock Path** – approvals collected via `claim_approval`; witness triggers `trigger_unlock`; state flips to `UNLOCKABLE`.
-11. **Download Path** – `get_download_url` returns presigned HTTP Gateway URL (8 h expiry) from asset canister.
+11. **Download Path** – `get_download_url` returns presigned HTTP Gateway URL (8 h expiry) from asset canister.
 12. **Cron Sweep** (`daily_maintenance`)
     * Purges expired invites, advances `GRACE_*` states, enforces post‑unlock window, compacts logs.
 
@@ -89,11 +141,11 @@ graph LR
 ```mermaid
 sequenceDiagram
     participant FE as "Frontend"
-    participant BE as "Backend Canister"
-    participant SM as "Stable Memory"
-    participant Pay as "Payment Adapter"
-    participant Ledger as "ICP Ledger"
-    participant CF as "CF Worker"
+    participant BE as "Backend Canister"
+    participant SM as "Stable Memory"
+    participant Pay as "Payment Adapter"
+    participant Ledger as "ICP Ledger"
+    participant CF as "CF Worker"
 
     FE->>Pay: init_payment
     Pay-->>FE: PaymentSession
@@ -126,19 +178,19 @@ sequenceDiagram
 
 ---
 
-## 4. Stable Memory **Storage Layout**
-> Powered by `ic-stable-structures` up to 4 GB, deterministic B‑Tree indexes and `ciborium 0.2.2`.
+## 4. Stable Memory **Storage Layout**
+> Powered by `ic-stable-structures` up to 4 GB, deterministic B‑Tree indexes and `ciborium 0.2.2`.
 
 | Segment | Key | Value Type | Description |
 |---------|-----|-----------|-------------|
 | **Vaults** | `vault:<vault_id>` | `VaultConfig` | Primary metadata & state machine. |
 | **Members** | `member:<vault_id>:<member_id>` | `VaultMember` | All heirs & witness profiles. |
-| **Invite Tokens** | `token:<token_id>` | `VaultInviteToken` | One‑time tokens with TTL. |
-| **Content List** | `content_idx:<vault_id>` | `Vec<ContentId>` | Ordered list per vault. |
-| **Content Item** | `content:<content_id>` | `VaultContentItem` | Encrypted payload blob. |
-| **Upload Staging** | `upload:<upload_id>:chunk<n>` | `Vec<u8>` | Temporarily holds encrypted chunks until `finish_upload`. Auto‑GC after 24 h. |
+| **Invite Tokens** | `token:<token_id>` | `VaultInviteToken` | One‑time tokens with TTL. |
+| **Content List** | `content_idx:<vault_id>` | `Vec<ContentId>` | Ordered list per vault. |
+| **Content Item** | `content:<content_id>` | `VaultContentItem` | Encrypted payload blob. |
+| **Upload Staging** | `upload:<upload_id>:chunk<n>` | `Vec<u8>` | Temporarily holds encrypted chunks until `finish_upload`. Auto‑GC after 24 h. |
 | **Approvals** | `approval:<vault_id>` | bitset (u16) | Bitmask of heir/witness approvals for O(1) quorum check. |
-| **Audit Logs** | `audit:<vault_id>` | `Vec<LogEvent>` | Append‑only; capped via sliding window (365 d). |
+| **Audit Logs** | `audit:<vault_id>` | `Vec<LogEvent>` | Append‑only; capped via sliding window (365 d). |
 | **Metrics** | `metrics` | `VaultMetrics` | Aggregate counters for admin dashboard. |
 
 ### Key Generation
@@ -146,9 +198,9 @@ sequenceDiagram
 * Content IDs embed vault ULID prefix → locality boosts sequential reads for vault exports.
 
 ### Compaction & Retention
-* `daily_maintenance` invokes `compact_logs(vault_id)` – retains last N or ≤ `log_retention_days`.
-* Upload‑staging segments older than 24 h are purged to free memory.
-* `EXPIRED` vaults older than 30 d are deleted wholesale, freeing all sub‑keys.
+* `daily_maintenance` invokes `compact_logs(vault_id)` – retains last N or ≤ `log_retention_days`.
+* Upload‑staging segments older than 24 h are purged to free memory.
+* `EXPIRED` vaults older than 30 d are deleted wholesale, freeing all sub‑keys.
 
 ### Index Helpers
 ```rust
@@ -163,30 +215,30 @@ pub fn content_prefix(vault_id: &str) -> Vec<u8> {
 
 ---
 
-## 5. Cost & Cycle Projection
+## 5. Cost & Cycle Projection
 
-> **Currency:** `1 ICP ≈ 1 × 10¹² cycles` (April 2025 NNS minting rate)  
-> **Storage tariff:** `127 cycles / byte / day` (IC mainnet schedule).  
-> **Update call base fee:** `2 × 10⁹ cycles` (includes ingress + exec + reply).
+> **Currency:** `1 ICP ≈ 1 × 10¹² cycles` (April 2025 NNS minting rate)  
+> **Storage tariff:** `127 cycles / byte / day` (IC mainnet schedule).  
+> **Update call base fee:** `2 × 10⁹ cycles` (includes ingress + exec + reply).
 
-### 5.1 Storage Cost per Plan (10-Year Holding)
-| Plan    | Storage (MiB) | Cycles / 10y | ICP / 10y |
-|---------|----------------|---------------|-----------|
-| Basic   | 5              | 2.43e+12      | 2.43      |
-| Standard| 10             | 4.86e+12      | 4.86      |
-| Premium | 50             | 24.3e+12      | 24.3      |
-| Deluxe  | 100            | 48.6e+12      | 48.6      |
-| Titan   | 250            | 121.5e+12     | 121.5     |
+### 5.1 Storage Cost per Plan (10-Year Holding)
+| Plan    | Storage (MiB) | Cycles / 10y | ICP / 10y |
+|---------|---------------|---------------|-----------|
+| Basic   | 5             | 2.43e+12      | 2.43      |
+| Standard| 10            | 4.86e+12      | 4.86      |
+| Premium | 50            | 24.3e+12      | 24.3      |
+| Deluxe  | 100           | 48.6e+12      | 48.6      |
+| Titan   | 250           | 121.5e+12     | 121.5     |
 
-### 5.2 Typical Vault Lifecycle – Call Budget
+### 5.2 Typical Vault Lifecycle – Call Budget
 | Phase                   | Calls | Cycles total     | ICP       |
 |------------------------|--------|------------------|-----------|
-| Payment ops            | 2      | 4 × 10⁹          | 0.004     |
-| create_vault           | 1      | 2 × 10⁹          | 0.002     |
-| Upload (20 chunks)     | 60     | 120 × 10⁹        | 0.12      |
-| Invite ops (3+1)       | 4      | 8 × 10⁹          | 0.008     |
-| Heir approval + unlock | 5      | 10 × 10⁹         | 0.01      |
-| **Total one‑off**      | **72** | **144 × 10⁹**    | **0.144** |
+| Payment ops            | 2      | 4 × 10⁹          | 0.004     |
+| create_vault           | 1      | 2 × 10⁹          | 0.002     |
+| Upload (20 chunks)     | 60     | 120 × 10⁹        | 0.12      |
+| Invite ops (3+1)       | 4      | 8 × 10⁹          | 0.008     |
+| Heir approval + unlock | 5      | 10 × 10⁹         | 0.01      |
+| **Total one‑off**      | **72** | **144 × 10⁹**    | **0.144** |
 
 > Upload and verification dominate compute costs; content quota is enforced per plan.
 
@@ -201,14 +253,14 @@ pub fn content_prefix(vault_id: &str) -> Vec<u8> {
 
 > **Note**: Updated pricing is designed to cover full ICP storage + compute costs with minimum ~20% margin. Age uplift still applicable.
 
-### 5.4 Cycle Top‑Up Policy
+### 5.4 Cycle Top‑Up Policy
 * **Per‑vault ledger**: Allocate escrow = 10x annual cycle burn.
 * **Heartbeat alert**: Warn @ <20T; auto top-up from ops wallet.
 
-### 5.5 Projected Burn (1 000 Vaults)
+### 5.5 Projected Burn (1 000 Vaults)
 ```text
-Standard Plan uptake (10 MiB each)
-→ Storage = 10 GiB = ~489 ICP / 10y
+Standard Plan uptake (10 MiB each)
+→ Storage = 10 GiB = ~489 ICP / 10y
 → Annual cycle burn = ~49 ICP
 ```
 
@@ -223,17 +275,17 @@ Standard Plan uptake (10 MiB each)
 | Category | Endpoint / Function | Core Parameters | Return (summary) | Purpose |
 |----------|---------------------|-----------------|------------------|---------|
 | **Payment** | `init_payment` | `vault_plan`, `amount_e8s`, `method` | `PaymentSession` | Open a payment session (ICP direct or ChainFusion). |
-| | `verify_payment` | `PaymentSession` | `Result<text, VaultError>` | Confirm ledger transfer, change vault → `NEED_SETUP`. |
+| | `verify_payment` | `PaymentSession` | `Result<text, VaultError>` | Confirm ledger transfer, change vault → `NEED_SETUP`. |
 | **Vault Core** | `create_vault` | `VaultInit` | `vault_id` | Create a new vault (initial state `DRAFT`). |
 | | `get_vault` | `vault_id` | `Option<VaultResponse>` | Retrieve vault metadata, members, approvals, etc. |
-| | `update_vault` | `vault_id`, `VaultUpdate` | `Result<(), VaultError>` | Modify name, unlock rules, plan, and other settings. |
-| **Invites / Members** | `generate_invite` | `vault_id`, `role` | `InviteToken` | Generate a 24 h token (heir / witness) with Shamir‑share index. |
-| | `claim_invite` | `token` | `Result<MemberProfile, VaultError>` | Claim token, create `VaultMember`, deliver key QR. |
-| **Unlock** | `trigger_unlock` | `vault_id` | `Result<(), VaultError>` | Witness‑initiated unlock; validates quorum & timing. |
+| | `update_vault` | `vault_id`, `VaultUpdate` | `Result<(), VaultError>` | Modify name, unlock rules, plan, and other settings. |
+| **Invites / Members** | `generate_invite` | `vault_id`, `role` | `InviteToken` | Generate a 24 h token (heir / witness) with Shamir‑share index. |
+| | `claim_invite` | `token` | `Result<MemberProfile, VaultError>` | Claim token, create `VaultMember`, deliver key QR. |
+| **Unlock** | `trigger_unlock` | `vault_id` | `Result<(), VaultError>` | Witness‑initiated unlock; validates quorum & timing. |
 | **Content Upload** | `begin_upload` | `vault_id`, `FileMeta` | `upload_id` | Reserve buffer; start chunked upload. |
-| | `upload_chunk` | `upload_id`, `idx`, `blob` | `()` | Upload a ≤ 512 KB chunk. |
-| | `finish_upload` | `upload_id`, `sha256` | `Result<(), VaultError>` | Verify size & checksum; commit the item. |
-| **Content Download** | `request_download` | `vault_id`, `item_id` | `Result<DownloadInfo, VaultError>` | Provide presigned URL (enforces 3‑per‑day quota). |
+| | `upload_chunk` | `upload_id`, `idx`, `blob` | `()` | Upload a ≤ 512 KB chunk. |
+| | `finish_upload` | `upload_id`, `sha256` | `Result<(), VaultError>` | Verify size & checksum; commit the item. |
+| **Content Download** | `request_download` | `vault_id`, `item_id` | `Result<DownloadInfo, VaultError>` | Provide presigned URL (enforces 3‑per‑day quota). |
 | **Maintenance / Metrics** | `daily_maintenance` | – | `()` | Called by Cloudflare Worker: expiry sweep, token cleanup. |
 | | `get_metrics` | – | `VaultMetrics` | System KPIs for Admin dashboard. |
 | **Admin‑only** | `list_vaults` | `offset`, `limit` | `Vec<VaultSummary>` | Paginated vault overview (id, owner, status, storage). |
@@ -247,8 +299,8 @@ type VaultId        = text;
 type UploadId       = text;
 type ItemId         = text;
 type PrincipalId    = principal;
-type Timestamp      = nat64;     // epoch sec
-type E8s            = nat64;     // 8 decimal ICP
+type Timestamp      = nat64;     // epoch sec
+type E8s            = nat64;     // 8 decimal ICP
 
 // ---------- Payment ----------
 type PaymentInit = record {
@@ -326,18 +378,18 @@ service : {
 
 ---
 
-## 7. Payment Adapter – Deep Dive
+## 7. Payment Adapter – Deep Dive
 
 > **Goal:** Enable one‑time payments in ICP (native) *or* any ChainFusion‑supported token with deterministic confirmation inside the canister, minimal user friction, and verifiable audit trail for Admin Billing.
 
-### 7.1 Modes & Decision Matrix
+### 7.1 Modes & Decision Matrix
 | Mode | Pros | Cons | UX Latency | Cycle Cost |
 |------|------|------|-----------|-----------|
-| **IcpDirect** (default) | Zero slippage, cheapest gas, no 3rd‑party dependency | Requires user to hold ICP or wallet plug‑in | ~3‑5 s ledger finality | 2 calls (init / verify) ≈ 0.4 mC |
-| **ChainFusionSwapper** | Accepts 50+ tokens (ETH, USDT, BTC…) → broad adoption | Added swap fee (≈ 0.3%), longer path, relies on ChainFusion uptime | 6‑15 s (token → swap → ICP) | +1 HTTPS outcall (swap) ≈ 0.7 mC |
-| **Future: FiatOnRamp** | Credit‑card convenience | KYC burden & charge‑back risk | 10‑30 s | TBD |
+| **IcpDirect** (default) | Zero slippage, cheapest gas, no 3rd‑party dependency | Requires user to hold ICP or wallet plug‑in | ~3‑5 s ledger finality | 2 calls (init / verify) ≈ 0.4 mC |
+| **ChainFusionSwapper** | Accepts 50+ tokens (ETH, USDT, BTC…) → broad adoption | Added swap fee (≈ 0.3%), longer path, relies on ChainFusion uptime | 6‑15 s (token → swap → ICP) | +1 HTTPS outcall (swap) ≈ 0.7 mC |
+| **Future: FiatOnRamp** | Credit‑card convenience | KYC burden & charge‑back risk | 10‑30 s | TBD |
 
-### 7.2 `PaymentSession` State Machine
+### 7.2 `PaymentSession` State Machine
 ```mermaid
 graph LR
     A[ISSUED] -->|wallet tx ok| B[CONFIRMED]
@@ -348,16 +400,16 @@ graph LR
 * **ISSUED**: Returned by `init_payment`; holds principal address & amount.
 * **CONFIRMED**: `verify_payment` saw matching ledger tx.
 * **CLOSED**: Vault created & Billing ledger entry booked.
-* **EXPIRED**: 30 min timeout without matching tx.
+* **EXPIRED**: 30 min timeout without matching tx.
 * **REFUNDED**: (future) manual admin action; cycles unlock.
 
-### 7.3 Sequence Diagram — *IcpDirect*
+### 7.3 Sequence Diagram — *IcpDirect*
 ```mermaid
 sequenceDiagram
     actor User
     participant FE as "Frontend"
-    participant Pay as "Payment Adapter"
-    participant Ledger as "ICP Ledger"
+    participant Pay as "Payment Adapter"
+    participant Ledger as "ICP Ledger"
     participant BE as "Backend Canister"
 
     User->>FE: Select plan & click Pay
@@ -365,7 +417,7 @@ sequenceDiagram
     Pay-->>FE: PaymentSession{pay_to_principal}
     FE-->>User: Prompt wallet transfer (Plug/NNS)
     User--)Ledger: Send ICP tx  (out‑of‑band)
-    loop polling (UI every 3 s)
+    loop polling (UI every 3 s)
         FE->>Pay: verify_payment(session_id)
         Pay->>Ledger: check_tx(pay_to_principal, amt)
         Ledger-->>Pay: found / not_found
@@ -380,7 +432,7 @@ sequenceDiagram
     end
 ```
 
-### 7.4 Sequence Diagram — *ChainFusionSwapper*
+### 7.4 Sequence Diagram — *ChainFusionSwapper*
 ```mermaid
 sequenceDiagram
     actor User
@@ -405,7 +457,7 @@ sequenceDiagram
     FE-->>Pay: close_session
 ```
 
-### 7.5 Payment Adapter Canister API
+### 7.5 Payment Adapter Canister API
 ```rust
 pub struct PaymentSession {
     pub session_id: String,          // ULID
@@ -420,40 +472,40 @@ pub struct PaymentSession {
 }
 ```
 
-*Session storage*: HashMap in volatile memory of adapter canister; persisted snapshot every 5 min to stable memory for crash recovery.
+*Session storage*: HashMap in volatile memory of adapter canister; persisted snapshot every 5 min to stable memory for crash recovery.
 
-### 7.6 Ledger Verification Logic (pseudo‑Rust)
+### 7.6 Ledger Verification Logic (pseudo‑Rust)
 ```rust
 fn verify_ledger(tx_hash: &str, expected_amt: u64, principal: &Principal) -> bool {
     let tx = ic_ledger::get_tx(tx_hash)?;
     tx.to == *principal && tx.amount_e8s == expected_amt && tx.confirmations >= 1
 }
 ```
-Edge‑cases checked: duplicate tx reuse, partial amount, wrong principal.
+Edge‑cases checked: duplicate tx reuse, partial amount, wrong principal.
 
-### 7.7 Error Mapping (Payment Adapter)
-| Error Code | HTTP  | Condition | User UX | Retry Policy |
+### 7.7 Error Mapping (Payment Adapter)
+| Error Code | HTTP  | Condition | User UX | Retry Policy |
 |------------|-------|-----------|---------|--------------|
-| `ERR_PAYMENT_TIMEOUT` | 408 | No matching tx before `expires_at` | Banner "Payment not detected" | User can click "Retry" or start new session |
-| `ERR_PAYMENT_AMOUNT_MISMATCH` | 400 | Amount < required | Show diff & required ICP | New session needed |
+| `ERR_PAYMENT_TIMEOUT` | 408 | No matching tx before `expires_at` | Banner "Payment not detected" | User can click "Retry" or start new session |
+| `ERR_PAYMENT_AMOUNT_MISMATCH` | 400 | Amount < required | Show diff & required ICP | New session needed |
 | `ERR_SWAP_FAILED` | 502 | ChainFusion returned error | Toast + support link | Adapter auto‑retries up to 3x |
 | `ERR_SESSION_CLOSED` | 409 | verify on already closed session | Silent (FE stops polling) | — |
 
-### 7.8 Admin Billing Ledger Pipeline
+### 7.8 Admin Billing Ledger Pipeline
 1. On `create_vault` success, backend emits `BillingEntry` with `tx_hash`, `token`, `amount_e8s`, `vault_id`.
 2. Entry stored in stable memory list `billing:<yyyy-mm>` for quick pagination.
 3. Admin UI fetches via `list_billing(offset, limit)`; CSV/PDF export builds from same storage.
 4. ChainFusion txs include original token symbol for audit trail.
 
-### 7.9 Future Enhancements
+### 7.9 Future Enhancements
 * **Ledger Notify**: switch from polling to Ledger canister certified event stream.
 * **Split Pay Adapter Canister**: isolate chainfusion HTTP calls from main backend cycles.
-* **Batch Upgrade**: vault upgrade (prorate) reuses same session flow with `amount_e8s = Δ price`.
+* **Batch Upgrade**: vault upgrade (prorate) reuses same session flow with `amount_e8s = Δ price`.
 
 ---
 
-## 8. Security & Threat Model
-### 8.1 Assets Worth Protecting
+## 8. Security & Threat Model
+### 8.1 Assets Worth Protecting
 | Asset | Exposure | Impact if Compromised |
 |-------|----------|------------------------|
 | **Ciphertext blobs** (files, letters, passwords) | Stored on‑chain but encrypted client‑side | Privacy breach if encryption broken |
@@ -462,17 +514,17 @@ Edge‑cases checked: duplicate tx reuse, partial amount, wrong principal.
 | **Payment principal address** | Public ledger | Financial fraud if spoofed |
 | **Cycles balance** | On‑canister metric | Denial‑of‑service if drained |
 
-### 8.2 Threat Matrix & Mitigations
+### 8.2 Threat Matrix & Mitigations
 | Threat | Vector | Mitigation |
 |--------|--------|------------|
 | **Spoofed II Principal** | Phishing / malicious extension | WebAuthn attestation + nonce, force re‑auth on critical ops |
 | **Replay Unlock Request** | Re‑send old `trigger_unlock` call | Per‑vault unlock nonce + time‑bound window validated in canister |
-| **Upload Poisoning** | Malicious chunk sequence / size | Strict order index, 512 KB cap, checksum verify before commit |
+| **Upload Poisoning** | Malicious chunk sequence / size | Strict order index, 512 KB cap, checksum verify before commit |
 | **Cycles Drain** | Infinite loop call or high‑freq spam | Token‑bucket per principal (transient memory) + cycle guard per call |
 | **Key‑share Collusion** | Heirs share QR keys prematurely | Require witness trigger, optional time threshold, audit logging |
 | **Recovery‑QR Theft** | Printed QR lost | QR auto‑revoked once first member joins; opt‑in passphrase layer |
 
-### 8.3 Security Hardening Checklist
+### 8.3 Security Hardening Checklist
 - `ic_cdk::api::set_certificate_verified_data()` to sign state tree roots for off‑chain proofs.
 - All stable‑memory writes wrapped in `with_transaction` to avoid torn state.
 - CSP headers on frontend, `X‑Content‑Type‑Options: nosniff`.
@@ -481,20 +533,20 @@ Edge‑cases checked: duplicate tx reuse, partial amount, wrong principal.
 
 ---
 
-## 9. Cryptography Deep‑Dive
-### 9.1 Envelope Encryption Pipeline
+## 9. Cryptography Deep‑Dive
+### 9.1 Envelope Encryption Pipeline
 ```text
 [ Client ]
    └── Generate 256‑bit AES‑GCM key (per item)
            ↓ encrypt payload
        Ciphertext  ──▶ upload_chunk()/finish_upload()
-           ↓ split k via Shamir (t/n configurable)
+           ↓ split k via Shamir (t/n configurable)
        Share_i  ──▶ delivered to heir/witness (QR or file)
 ```
 * AES key never leaves browser unencrypted.
 * Shamir share indices randomised with `ic_cdk::api::management_canister::main::raw_rand()` ensuring unbiased randomness.
 
-### 9.2 Shamir Share Index Algorithm
+### 9.2 Shamir Share Index Algorithm
 ```rust
 let idx = loop {
     let r = raw_rand();                      // 32‑byte entropy from subnet
@@ -504,7 +556,7 @@ let idx = loop {
 ```
 Avoids 0 (reserved) and guarantees no reuse.
 
-### 9.3 Cipher Suite Versioning
+### 9.3 Cipher Suite Versioning
 ```
 enc_v = 1 // bumped when switching ciphers
 ```
@@ -512,11 +564,11 @@ Future upgrade path: embed `enc_v` in `VaultContentItem` header; FE chooses ciph
 
 ---
 
-## 10. Error & Retry Semantics
-### 10.1 Idempotency Matrix
+## 10. Error & Retry Semantics
+### 10.1 Idempotency Matrix
 | Endpoint | Idempotent? | Safe Client Retries | Notes |
 |----------|-------------|---------------------|-------|
-| `init_payment` | ✅ | Yes – returns same `PaymentSession` for same payload within 5 min window | Session key = owner + plan + amount |
+| `init_payment` | ✅ | Yes – returns same `PaymentSession` for same payload within 5 min window | Session key = owner + plan + amount |
 | `verify_payment` | ✅ | Yes – ledger polling | 409 `ERR_PAYMENT_PENDING` until confirmed |
 | `create_vault` | ⚠️ | Use client‑side retry token | ULID vault_id generated server‑side; retries with same **idempotency‑key** header are safe |
 | `begin_upload` | ✅ | Yes | returns same `upload_id` if already begun |
@@ -526,7 +578,7 @@ Future upgrade path: embed `enc_v` in `VaultContentItem` header; FE chooses ciph
 | `claim_invite` | ✅ | Yes – returns same `VaultMember` if already claimed |
 | `trigger_unlock` | ⚠️ | Limited; returns `ERR_ALREADY_UNLOCKABLE` if state met |
 
-### 10.2 Error Code Registry (Δ)
+### 10.2 Error Code Registry (Δ)
 | Code | HTTP proxy | Retry? | Description |
 |------|-----------|--------|-------------|
 | `ERR_PAYMENT_PENDING` | 409 | ✓  (after back‑off) | Tx not found yet |
@@ -536,11 +588,11 @@ Future upgrade path: embed `enc_v` in `VaultContentItem` header; FE chooses ciph
 | `ERR_TOKEN_BUCKET_EXCEEDED` | 429 | ✓ (after window) | Per‑principal rate‑limit hit |
 | `ERR_ALREADY_UNLOCKABLE` | 409 | ✗ | Vault already unlocked |
 
-Client SDK maps these to typed exceptions + back‑off rules (e.g., exponential 1‑2‑4‑8 s on 409).
+Client SDK maps these to typed exceptions + back‑off rules (e.g., exponential 1‑2‑4‑8 s on 409).
 
 ---
 
-## 11. get_metrics Payload (Admin Dashboard)
+## 11. get_metrics Payload (Admin Dashboard)
 `get_metrics()` now returns a struct tailored for **AdminOverview** tiles (see *admin.wireframe.md*):
 ```candid
 record VaultMetrics {
@@ -562,19 +614,19 @@ Frontend maps these 1‑to‑1 to the metrics cards in **Admin Dashboard** (tota
 
 ---
 
-## 12. Upgrade & Migration Strategy
+## 12. Upgrade & Migration Strategy
 1. **Version Tags in Data Rows** – add `schema_v` to `VaultConfig` & `VaultContentItem`.
 2. **Pre‑Upgrade Hook** – snapshot critical counters & trie root with `stable::save()`
 3. **Post‑Upgrade Hook** – run migration if `old_schema_v < new_schema_v`.
 4. **Rolling Out cipher upgrade** – keep backward compat in FE; decrypt by `enc_v`. New uploads use latest.
 5. **Horizontal Shard Migration** – move vaults by prefix to new canister, update routing table (owner → shard map) stored in management canister.
-6. **Downtime Budget** – target < 60 s; CI pipeline auto‑runs integration tests on replica jar before mainnet deploy.
+6. **Downtime Budget** – target < 60 s; CI pipeline auto‑runs integration tests on replica jar before mainnet deploy.
 
 ---
 
-## 13. API Rate‑Limit & Abuse Control
+## 13. API Rate‑Limit & Abuse Control
 * **Algorithm**: In‑memory token bucket keyed by `caller_principal`.
-* **Parameters**: capacity = 20 tokens, refill = 1 token/s.
+* **Parameters**: capacity = 20 tokens, refill = 1 token/s.
 * **Storage**: `RefCell<HashMap<Principal, Bucket>>` in **heap only** (transient) – resets on canister upgrade.
 * **Guard Macro**:
 ```rust
@@ -591,16 +643,16 @@ All public endpoints start with `rate_guard!(caller)`.
 
 ---
 
-## 14. Data‑Integrity Guards
+## 14. Data‑Integrity Guards
 * **Checksum Verification** – `finish_upload` requires client‑calculated SHA‑256, server recomputes on staged chunks.
 * **Transactional Write Barrier** – `ic_cdk::storage::stable::with_transaction()` wraps multi‑key writes for vault state transitions; either all or none commit.
 * **Daily Quota Counters** – download counter resets via `day_index(ic_time())` ensuring calendar‑day isolation.
 
 ---
 
-## 15. Scaling Notes (Post‑MVP)
-1. **Multi‑canister Sharding** – hash‑partition on `vault_id` to new canisters once > 500 vaults or 2 GB memory.
-2. **Content CDN** – move encrypted file blobs to dedicated asset canister or ICP HTTP Gateway bucket.
+## 15. Scaling Notes (Post‑MVP)
+1. **Multi‑canister Sharding** – hash‑partition on `vault_id` to new canisters once > 500 vaults or 2 GB memory.
+2. **Content CDN** – move encrypted file blobs to dedicated asset canister or ICP HTTP Gateway bucket.
 3. **Metrics Export** – expose Prom‑style metrics via HTTPS boundary nodes + Grafana dashboard.
 4. **Async Payments** – listen to Ledger canister events instead of polling.
 

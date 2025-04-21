@@ -20,7 +20,7 @@ const ONE_YEAR_NANOS: u64 = 365 * DAY_NANOS; // Approximate
 
 /// Performs daily maintenance tasks for the entire system.
 /// This function is intended to be called by a timer or an external trigger (e.g., Cloudflare Worker).
-pub fn perform_daily_maintenance() -> Result<(), VaultError> {
+pub async fn perform_daily_maintenance() -> Result<(), VaultError> {
     let current_time = time();
     ic_cdk::print(format!(
         "⚙️ SCHEDULER: Starting daily maintenance at {}",
@@ -39,7 +39,7 @@ pub fn perform_daily_maintenance() -> Result<(), VaultError> {
     }
 
     // 2. Check Vault Expirations & Advance Lifecycle States
-    if let Err(e) = check_vault_lifecycles(current_time) {
+    if let Err(e) = check_vault_lifecycles(current_time).await {
          let msg = format!("Failed to check lifecycles: {:?}", e);
         ic_cdk::eprintln!("🔥 SCHEDULER ERROR: {}", msg);
         errors.push(msg);
@@ -92,9 +92,10 @@ pub fn purge_expired_invites(current_time: u64) -> Result<(), VaultError> {
         storage::INVITE_TOKENS.with(|map_ref| {
             let mut map = map_ref.borrow_mut();
             for (key, value) in updates {
-                if let Err(e) = map.insert(key, value) {
-                    ic_cdk::eprintln!("🔥 SCHEDULER ERROR: Failed to update expired token: {:?}", e);
-                    error_count += 1;
+                // Correct match for Option<V> returned by insert
+                match map.insert(key, value) {
+                    Some(_) => { /* Overwrite successful */ }
+                    None => { /* Insert successful */ }
                 }
             }
         });
@@ -110,7 +111,7 @@ pub fn purge_expired_invites(current_time: u64) -> Result<(), VaultError> {
 
 /// Checks vault statuses and transitions them based on time (expiry, grace periods).
 /// NOTE: This iterates the entire map, which can be inefficient.
-pub fn check_vault_lifecycles(current_time: u64) -> Result<(), VaultError> {
+pub async fn check_vault_lifecycles(current_time: u64) -> Result<(), VaultError> {
     ic_cdk::print("⚙️ SCHEDULER: Checking vault lifecycles...");
     let mut transitions: Vec<(String, VaultStatus)> = Vec::new();
     let mut vault_ids_to_delete: Vec<String> = Vec::new();
@@ -119,7 +120,8 @@ pub fn check_vault_lifecycles(current_time: u64) -> Result<(), VaultError> {
         let map = map_ref.borrow();
         for (key, value) in map.iter() {
             let config: VaultConfig = value.0;
-            let vault_id: String = key.0.0; // Extract VaultId from StorableString(Cbor(VaultId))
+            // Get vault_id from the deserialized config, not the key
+            let vault_id: String = config.vault_id.clone();
 
             match config.status {
                 VaultStatus::Active if current_time > config.expires_at => {
@@ -178,7 +180,7 @@ pub fn check_vault_lifecycles(current_time: u64) -> Result<(), VaultError> {
 
     // Apply state transitions
     for (vault_id, new_status) in transitions {
-        if let Err(e) = vault_service::set_vault_status(&vault_id, new_status, None) { // Triggered by System
+        if let Err(e) = vault_service::set_vault_status(&vault_id, new_status, None).await { // Triggered by System
              ic_cdk::eprintln!(
                 "🔥 SCHEDULER ERROR: Failed vault {} transition to {:?}: {:?}",
                 vault_id, new_status, e
@@ -193,7 +195,7 @@ pub fn check_vault_lifecycles(current_time: u64) -> Result<(), VaultError> {
          // The delete_vault function needs proper authorization checks.
          // Assuming system (scheduler) is authorized for now.
          let system_principal = ic_cdk::api::id(); // Or a designated admin principal
-         if let Err(e) = vault_service::delete_vault(&vault_id, system_principal) {
+         if let Err(e) = vault_service::delete_vault(&vault_id, system_principal).await {
              ic_cdk::eprintln!(
                 "🔥 SCHEDULER ERROR: Failed to delete vault {}: {:?}",
                 vault_id, e
@@ -219,11 +221,14 @@ pub fn cleanup_stale_uploads(current_time: u64) -> Result<(), VaultError> {
     upload_service::ACTIVE_UPLOADS.with(|uploads_ref| {
         let mut uploads = uploads_ref.borrow_mut();
         // Retain only uploads created within the last 24 hours
-        uploads.retain(|upload_id, upload_state| {
-            if upload_state.created_at < cutoff_time {
+        uploads.retain(|_upload_id, upload_state| {
+            // Use the public accessor method
+            if upload_state.created_at() < cutoff_time {
                 ic_cdk::print(format!(
                     "⏳ SCHEDULER: Removing stale upload session {}. Created at: {}, Cutoff: {}",
-                    upload_id, upload_state.created_at, cutoff_time
+                    upload_state.upload_id(), // Use accessor
+                    upload_state.created_at(), // Use accessor
+                    cutoff_time
                 ));
                 removed_count += 1;
                 false // Remove the entry

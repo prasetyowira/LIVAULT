@@ -15,18 +15,20 @@ ic-stable-structures = "0.6.8"
 ciborium = "0.2.2"
 ic-cdk-timers = "0.11.0" # From plan's target stack
 ic-ledger-types = "0.14.0"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11" # Explicitly requested version
-thiserror = "2.0.12" # Common error handling library
+thiserror = "1.0.63"
 
 # Dependencies needed based on architecture/tech docs
 aes-gcm = "0.10.3" # For encryption mentioned in tech docs
 sha2 = "0.10.8" # For checksums mentioned in tech docs
-hex = "0.4"
+hex = "0.4.3"
 vsss-rs = "5.1"
-validator = "0.20.0"
+validator = { version = "0.18.1", features = ["derive"] }
 rand = "0.8.5"
 getrandom = { version = "0.2", features = ["custom"] }
+futures = "0.3.30"
+num = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 # Add testing dependencies later if needed

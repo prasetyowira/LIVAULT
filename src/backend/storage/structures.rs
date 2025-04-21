@@ -23,6 +23,7 @@ use crate::storage::storable::{Cbor, StorableString};
 use ic_stable_structures::{StableBTreeMap, StableCell, StableLog};
 use std::cell::RefCell;
 use ic_cdk::api::time;
+use serde;
 
 // Define Storable types for models using the CBOR wrapper
 type StorableVaultConfig = Cbor<VaultConfig>;
@@ -110,7 +111,7 @@ pub fn create_audit_log_key(vault_id: &str) -> String {
 // Add other key generation helpers if needed, e.g., for prefixed iteration.
 
 /// Helper function to get the inner Cbor value from storage result
-pub fn get_value<T>(result: Option<Cbor<T>>) -> Option<T> {
+pub fn get_value<T: serde::Serialize + for<'de> serde::Deserialize<'de>>(result: Option<Cbor<T>>) -> Option<T> {
     result.map(|cbor| cbor.0)
 }
 
@@ -164,9 +165,13 @@ pub fn add_audit_log_entry(vault_id: &str, mut entry: AuditLogEntry) -> Result<(
         current_log_vec.push(entry);
 
         // Save the updated vector back to the map
-        map.insert(key, Cbor(current_log_vec))
-           .map(|_| ()) // Discard the previous value result
-           .map_err(|e| format!("Failed to insert audit log entry: {:?}", e))
+        match map.insert(key, Cbor(current_log_vec)) {
+            Some(_previous_value) => Ok(()), // Overwrite successful
+            None => Ok(()), // Insert successful
+            // Note: StableBTreeMap::insert itself doesn't return Err, but underlying storage operations could fail in theory.
+            // However, the interface returns Option<V>. If an error occurs, it usually traps.
+            // We handle potential errors at a higher level or rely on the trap mechanism.
+        }
     })
 }
 

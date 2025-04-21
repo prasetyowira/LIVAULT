@@ -9,11 +9,17 @@ use crate::{
     storage::payment::{store_payment_session, with_payment_session, with_payment_session_mut}, // Use storage module helpers
     utils::crypto::generate_ulid, // For SessionId
     adapter::chainfusion_adapter::{initialize_chainfusion_swap, check_chainfusion_swap_status, ChainFusionInitRequest, ChainFusionSwapStatus},
+    services::vault_service, // Fix vault_service import
 };
 use candid::Principal;
 use ic_cdk::api::{self, time};
 use std::time::Duration;
 use ic_ledger_types::{AccountIdentifier, Subaccount, AccountBalanceArgs, DEFAULT_SUBACCOUNT, transfer, TransferArgs, Memo, Tokens};
+use crate::utils::account_identifier::AccountIdentifier;
+use crate::adapter::chainfusion_adapter;
+use crate::adapter::ledger_adapter; // Assuming ledger adapter exists
+use ic_cdk::api::caller as ic_caller;
+use crate::models::billing::BillingEntry;
 
 // Constants
 const PAYMENT_SESSION_TIMEOUT_SECONDS: u64 = 30 * 60; // 30 minutes
@@ -113,7 +119,7 @@ pub async fn initialize_payment_session(
                 // Store the error and set state
                 session.state = PayState::Error;
                 session.error_message = Some(format!("ChainFusion init failed: {:?}", e));
-                store_payment_session(session.clone())?; // Store session even if CF init failed
+                store_payment_session(session.clone());
                 return Err(VaultError::PaymentError(
                     "Failed to initialize ChainFusion swap.".to_string(),
                 ));
@@ -122,7 +128,7 @@ pub async fn initialize_payment_session(
     }
 
     // Store the session
-    store_payment_session(session.clone())?;
+    store_payment_session(session.clone());
 
     ic_cdk::print(format!(
         "📝 INFO: Payment session {} created for plan {} ({} e8s) by {}. Method: {:?}. Expires at {}. Pay to Account: {}",
@@ -165,7 +171,7 @@ pub async fn verify_payment(
             if current_time > session.expires_at {
                 session.state = PayState::Expired;
                 session.error_message = Some("Session expired before verification.".to_string());
-                store_payment_session(session)?; // Store updated state
+                store_payment_session(session);
                 return Err(VaultError::PaymentError("Payment session has expired.".to_string()));
             }
             // Proceed to verification logic based on method
@@ -203,7 +209,7 @@ pub async fn verify_payment(
             session.error_message = None;
 
             // Persist the confirmed session state BEFORE updating the vault
-            store_payment_session(session.clone())?;
+            store_payment_session(session.clone());
 
             // Update Vault Status (Placeholder: Needs actual VaultService call)
             // TODO: Integrate with VaultService to update vault status
@@ -230,10 +236,10 @@ pub async fn verify_payment(
                 session_id, e
             );
             // Store error state if it's a definite failure (not just pending)
-            if !matches!(e, VaultError::PaymentPending(_)) {
+            if !matches!(e, VaultError::PaymentError(_)) {
                 session.state = PayState::Error;
                 session.error_message = Some(format!("{:?}", e));
-                store_payment_session(session)?;
+                store_payment_session(session);
             }
             Err(e) // Return the specific verification error
         }
@@ -261,7 +267,7 @@ async fn verify_icp_ledger_payment(session: &PaymentSession) -> Result<String, V
     if payment_found_and_valid {
         Ok(tx_hash_placeholder)
     } else {
-        Err(VaultError::PaymentPending("ICP payment not confirmed on ledger yet.".to_string()))
+        Err(VaultError::PaymentError("ICP payment not confirmed on ledger yet.".to_string()))
     }
 }
 
@@ -302,7 +308,7 @@ async fn verify_chainfusion_payment(session: &PaymentSession) -> Result<String, 
             }
         }
         ChainFusionSwapStatus::Pending | ChainFusionSwapStatus::Processing => {
-            Err(VaultError::PaymentPending("ChainFusion swap is still processing.".to_string()))
+            Err(VaultError::PaymentError("ChainFusion swap is still processing.".to_string()))
         }
         ChainFusionSwapStatus::Expired => {
             Err(VaultError::PaymentError("ChainFusion swap offer expired.".to_string()))
@@ -350,3 +356,18 @@ pub fn close_payment_session(session_id: &SessionId) -> Result<(), VaultError> {
 
 // TODO: Add function to handle ChainFusion payments (initiate swap, verify swap completion)
 // TODO: Add function to get payment session status
+
+// TODO: Implement actual billing log query
+pub async fn list_billing_entries(offset: u64, limit: usize) -> Result<(Vec<BillingEntry>, u64), VaultError> {
+    ic_cdk::print(format!(
+        "🧾 INFO: Listing billing entries (offset: {}, limit: {}). Placeholder implementation.",
+        offset,
+        limit
+    ));
+    // Placeholder: Return empty list and zero total
+    // Replace with actual stable log query
+    Ok((Vec::new(), 0))
+}
+
+// --- Internal Helpers ---
+// ... rest of file ...

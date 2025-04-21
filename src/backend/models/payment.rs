@@ -64,7 +64,10 @@ impl PaymentSession {
 // Implement Storable for stable memory persistence
 impl Storable for PaymentSession {
     fn to_bytes(&self) -> Cow<[u8]> {
-        Cow::Owned(ciborium::into_writer(&self, Vec::new()).unwrap())
+        // Create a Vec<u8> writer, write into it, and return the owned Vec
+        let mut writer = Vec::new();
+        ciborium::into_writer(&self, &mut writer).expect("Failed to serialize PaymentSession");
+        Cow::Owned(writer)
     }
 
     fn from_bytes(bytes: Cow<[u8]>) -> Self {

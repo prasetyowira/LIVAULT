@@ -25,6 +25,7 @@ pub fn set_cursor(position: u64) -> Result<(), String> {
     CURSOR_POSITION.with(|cell| {
         cell.borrow_mut()
             .set(position)
+            .map(|_old_value| ())
             .map_err(|e| format!("Failed to set cursor: {:?}", e))
     })
 }

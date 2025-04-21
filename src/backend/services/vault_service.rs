@@ -5,15 +5,17 @@ use crate::{
     error::VaultError,
     models::{
         common::*, // Import common types like VaultId, Timestamp, PrincipalId, VaultStatus
-        VaultConfig, // Import the VaultConfig model
+        vault_config::VaultConfig, // Import the VaultConfig model
+        vault_member::VaultMember, // Needed for listing vaults by member
         UnlockConditions, // Import UnlockConditions
         // Add other models as needed, e.g., VaultUpdate payload struct
     },
-    storage::{self, Cbor, StorableString}, // Import storage functions/structs
+    storage::{self, Cbor, StorableString, VAULT_CONFIGS, VAULT_MEMBERS}, // Import storage functions/structs
     utils::crypto::generate_ulid, // Import ULID generation
 };
-use ic_cdk::api::time; // For timestamps
+use ic_cdk::api::{time, caller}; // For timestamps and caller
 use std::time::Duration; // For duration calculations
+use candid::Principal as PrincipalId; // Explicit import
 
 // --- Vault Initialization Struct (Example - Define properly in models or api later) ---
 // This struct would typically come from the API layer (Phase 3)
@@ -61,7 +63,7 @@ pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, Vault
         "Premium" => 50 * 1024 * 1024,      // 50 MB
         "Deluxe" => 100 * 1024 * 1024,    // 100 MB
         "Titan" => 250 * 1024 * 1024,       // 250 MB
-        _ => return Err(VaultError::InternalError("Invalid plan specified".to_string())), // Or a specific PlanInvalid error
+        _ => return Err(VaultError::InvalidInput("Invalid plan specified".to_string())), // Use InvalidInput
     };
 
     let config = VaultConfig {
@@ -83,12 +85,14 @@ pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, Vault
 
     // Store the configuration
     storage::VAULT_CONFIGS.with(|map| {
-        let key = StorableString(Cbor(vault_id.clone()));
+        let key = Cbor(vault_id.clone());
         let value = Cbor(config);
-        map.borrow_mut()
-            .insert(key, value)
-            .map_err(|e| VaultError::StorageError(format!("Failed to insert vault config: {:?}", e)))?;
-        Ok(vault_id)
+
+        // Correct match for Option<V> returned by insert
+        match map.borrow_mut().insert(key, value) {
+            Some(_) => Err(VaultError::AlreadyExists(vault_id)), // Should not happen if ID is unique
+            None => Ok(vault_id),
+        }
     })
 }
 
@@ -99,9 +103,9 @@ pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, Vault
 ///
 /// # Returns
 /// * `Result<VaultConfig, VaultError>` - The vault configuration or an error if not found.
-pub fn get_vault_config(vault_id: &VaultId) -> Result<VaultConfig, VaultError> {
+pub async fn get_vault_config(vault_id: &VaultId) -> Result<VaultConfig, VaultError> {
     storage::VAULT_CONFIGS.with(|map| {
-        let key = StorableString(Cbor(vault_id.clone()));
+        let key = Cbor(vault_id.clone()); // Use Cbor directly
         match map.borrow().get(&key) {
             Some(storable_config) => Ok(storable_config.0), // Access inner VaultConfig from Cbor wrapper
             None => Err(VaultError::VaultNotFound(vault_id.clone())),
@@ -119,13 +123,13 @@ pub fn get_vault_config(vault_id: &VaultId) -> Result<VaultConfig, VaultError> {
 ///
 /// # Returns
 /// * `Result<(), VaultError>` - Success or an error.
-pub fn update_existing_vault(
+pub async fn update_vault_config(
     vault_id: &VaultId,
     update_data: VaultUpdateData,
     caller: PrincipalId,
 ) -> Result<(), VaultError> {
     storage::VAULT_CONFIGS.with(|map| {
-        let key = StorableString(Cbor(vault_id.clone()));
+        let key = Cbor(vault_id.clone()); // Use Cbor directly
         let mut borrowed_map = map.borrow_mut();
 
         // 1. Retrieve existing config
@@ -150,11 +154,10 @@ pub fn update_existing_vault(
                 updated = true;
             }
         }
-        if let Some(description) = update_data.description {
-             if config.description != description {
-                config.description = description;
-                updated = true;
-            }
+        // Compare Option<String> with Option<String>
+        if update_data.description != config.description {
+             config.description = update_data.description;
+             updated = true;
         }
         if let Some(unlock_conditions) = update_data.unlock_conditions {
             // TODO: Add validation for unlock conditions if needed
@@ -175,7 +178,7 @@ pub fn update_existing_vault(
                     "Premium" => 50 * 1024 * 1024,
                     "Deluxe" => 100 * 1024 * 1024,
                     "Titan" => 250 * 1024 * 1024,
-                    _ => return Err(VaultError::InternalError("Invalid new plan specified".to_string())),
+                    _ => return Err(VaultError::InvalidInput("Invalid new plan specified".to_string())),
                 };
                 // Check if new quota is sufficient for current usage
                 if new_storage_quota_bytes < config.storage_used_bytes {
@@ -188,17 +191,44 @@ pub fn update_existing_vault(
             }
         }
 
-
         // 4. If updated, update timestamp and save
         if updated {
             config.updated_at = time();
-            borrowed_map
-                .insert(key, Cbor(config))
-                .map_err(|e| VaultError::StorageError(format!("Failed to update vault config: {:?}", e)))?;
-            ic_cdk::print(format!("📝 INFO: Vault {} updated by owner {}", vault_id, caller));
+            // Insert the updated config back
+            // Correct match for Option<V> returned by insert
+            match borrowed_map.insert(key, Cbor(config)) {
+                 Some(_) => {
+                     ic_cdk::print(format!("📝 INFO: Vault {} updated by owner {}", vault_id, caller));
+                     Ok(())
+                 },
+                 None => {
+                    // Should not happen if we just fetched it, but handle defensively
+                    Err(VaultError::StorageError("Failed to update vault config (vault disappeared?)".to_string()))
+                 },
+            }
+        } else {
+            Ok(()) // No changes made
         }
+    })
+}
 
-        Ok(())
+/// Saves the provided VaultConfig to stable storage.
+/// This is intended for internal use by services after modifying config.
+///
+/// # Arguments
+/// * `config` - The VaultConfig object to save.
+///
+/// # Returns
+/// * `Result<(), VaultError>` - Success or storage error.
+pub async fn save_vault_config(config: &VaultConfig) -> Result<(), VaultError> {
+    let key = Cbor(config.vault_id.clone());
+    let value = Cbor(config.clone()); // Clone the config to store
+    storage::VAULT_CONFIGS.with(|map| {
+        // Correct match for Option<V> returned by insert
+        match map.borrow_mut().insert(key, value) {
+            Some(_) => Ok(()),
+            None => Ok(()),
+        }
     })
 }
 
@@ -211,9 +241,9 @@ pub fn update_existing_vault(
 ///
 /// # Returns
 /// * `Result<(), VaultError>` - Success or an error.
-pub fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, triggering_principal: Option<PrincipalId>) -> Result<(), VaultError> {
+pub async fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, _triggering_principal: Option<PrincipalId>) -> Result<(), VaultError> {
     storage::VAULT_CONFIGS.with(|map| {
-        let key = StorableString(Cbor(vault_id.clone()));
+        let key = Cbor(vault_id.clone()); // Use Cbor directly
         let mut borrowed_map = map.borrow_mut();
 
         let mut config = match borrowed_map.get(&key) {
@@ -244,125 +274,214 @@ pub fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, triggering_
             (VaultStatus::Expired, VaultStatus::Deleted) => (), // purge trigger
 
             // Allow setting to the same status (idempotent)
-            (s1, s2) if s1 == s2 => (),
+            (s1, s2) if s1 == s2 => {
+                 ic_cdk::print(format!("ℹ️ INFO: Vault {} status already {:?}. No change needed.", vault_id, new_status));
+                 return Ok(()); // No change needed
+            },
 
             // Reject all other transitions
             _ => {
-                return Err(VaultError::InvalidStateTransition(format!(
-                    "Invalid status transition for vault {} from {:?} to {:?}",
-                    vault_id, old_status, new_status
+                // Use a specific error variant if available, otherwise InternalError
+                return Err(VaultError::InternalError(format!(
+                    "Invalid state transition requested for vault {}: from {:?} to {:?}",
+                    vault_id,
+                    old_status,
+                    new_status
                 )));
             }
         }
 
-        // Update status and timestamp
+        // If transition is valid, update status and timestamp
         config.status = new_status;
         config.updated_at = time();
-
-        // Record unlock time if applicable
-        if new_status == VaultStatus::Unlockable && config.unlocked_at.is_none() {
+        // Update unlocked_at specifically if transitioning to Unlockable
+        if new_status == VaultStatus::Unlockable {
             config.unlocked_at = Some(time());
         }
 
-        // Save the updated configuration
-        borrowed_map
-            .insert(key, Cbor(config))
-            .map_err(|e| VaultError::StorageError(format!("Failed to set vault status: {:?}", e)))?;
-
-        ic_cdk::print(format!(
-            "🔄 INFO: Vault {} status changed from {:?} to {:?} (Triggered by: {:?})",
-            vault_id,
-            old_status,
-            new_status,
-            triggering_principal.map(|p| p.to_string()).unwrap_or_else(|| "System".to_string())
-        ));
-
-        Ok(())
+        // Save the updated config
+        // Correct match for Option<V> returned by insert
+        match borrowed_map.insert(key, Cbor(config)) {
+            Some(_) => {
+                 ic_cdk::print(format!(
+                    "⚙️ INFO: Vault {} status changed from {:?} to {:?}.",
+                    vault_id,
+                    old_status,
+                    new_status
+                ));
+                Ok(())
+            },
+            None => {
+                // Should not happen, handle defensively
+                Err(VaultError::StorageError("Failed to set vault status (vault disappeared?)".to_string()))
+            }
+        }
     })
 }
 
-/// Retrieves all vault configurations owned by a specific principal.
-/// NOTE: This iterates through all vaults and can be inefficient for large numbers of vaults.
-/// Consider adding a secondary index (owner -> Vec<vault_id>) for performance if needed.
+/// Trigger vault unlock process (e.g., called by witness or scheduler).
+/// Checks unlock conditions and transitions state to Unlockable if met.
 ///
 /// # Arguments
-/// * `owner` - The principal ID of the owner.
-///
-/// # Returns
-/// * `Result<Vec<VaultConfig>, VaultError>` - A list of vault configurations owned by the principal.
-pub fn get_vaults_by_owner(owner: PrincipalId) -> Result<Vec<VaultConfig>, VaultError> {
-     ic_cdk::print(format!("⏳ INFO: Iterating vaults to find those owned by {}", owner));
-    // TODO: Implement efficient iteration over VAULT_CONFIGS stable BTreeMap.
-    // The current `ic-stable-structures` BTreeMap doesn't directly support efficient
-    // value-based filtering during iteration without reading all values.
-    // A possible approach is to iterate keys/values and filter in memory.
-    // For large scale, a secondary index (e.g., another BTreeMap mapping Owner -> Vec<VaultId>)
-    // would be necessary.
-
-    let mut owned_vaults = Vec::new();
-    storage::VAULT_CONFIGS.with(|map_ref| {
-        let map = map_ref.borrow();
-        for (_key, value) in map.iter() {
-             let config: VaultConfig = value.0; // Access inner VaultConfig from Cbor wrapper
-             if config.owner == owner {
-                 owned_vaults.push(config);
-             }
-        }
-    });
-
-    ic_cdk::print(format!("✅ INFO: Found {} vaults owned by {}", owned_vaults.len(), owner));
-    Ok(owned_vaults)
-}
-
-/// Deletes a vault and all associated data (members, content, invites, etc.).
-/// This is a destructive operation and should be used with caution, typically only
-/// after a vault reaches the end of its lifecycle (e.g., Deleted status).
-///
-/// # Arguments
-/// * `vault_id` - The ID of the vault to delete.
-/// * `caller` - Principal attempting the deletion (for authorization/logging).
+/// * `vault_id` - The ID of the vault.
+/// * `caller` - The principal triggering the unlock (witness/admin).
 ///
 /// # Returns
 /// * `Result<(), VaultError>` - Success or an error.
-pub fn delete_vault(vault_id: &VaultId, caller: PrincipalId) -> Result<(), VaultError> {
-    ic_cdk::print(format!("🗑️ WARNING: Attempting to delete vault {} by caller {}", vault_id, caller));
+pub async fn trigger_unlock(vault_id: &VaultId, caller: PrincipalId) -> Result<(), VaultError> {
+    let config = get_vault_config(vault_id).await?;
 
-    // 1. Authorization: Ensure caller is authorized (e.g., system admin or maybe owner in specific states?)
-    // TODO: Implement proper authorization for deletion. For now, allow deletion if called.
+    // Authorization: Check if caller is a witness or admin (add roles later)
+    // For now, let's allow any principal to trigger for testing, but add checks.
+    // Example: Check if caller is in the vault_members list with role Witness
+    // let members = invite_service::get_members_for_vault(vault_id)?;
+    // if !members.iter().any(|m| m.principal == caller && m.role == Role::Witness) {
+    //     return Err(VaultError::NotAuthorized("Only a witness can trigger unlock".to_string()));
+    // }
 
-    // 2. Delete Vault Config
-    let removed_config = storage::VAULT_CONFIGS.with(|map| {
-        let key = StorableString(Cbor(vault_id.clone()));
-        map.borrow_mut().remove(&key)
-    });
-
-    if removed_config.is_none() {
-        // Vault config already gone or never existed. Might still need cleanup.
-        ic_cdk::print(format!("⚠️ WARN: Vault config for {} not found during deletion, continuing cleanup.", vault_id));
-    } else {
-         ic_cdk::print(format!("✅ INFO: Vault config for {} removed.", vault_id));
+    // Check if vault is in a state where unlock can be triggered (e.g., Active, GraceMaster, GraceHeir)
+    if !matches!(config.status, VaultStatus::Active | VaultStatus::GraceMaster | VaultStatus::GraceHeir) {
+        return Err(VaultError::InternalError(format!("Cannot trigger unlock from status {:?}", config.status)));
     }
 
-    // 3. Delete Associated Data
-    // TODO: Implement deletion logic for associated data using prefix iteration/deletion if keys support it.
-    // This needs to cover:
-    // - VAULT_MEMBERS (prefix: `member:<vault_id>:`)
-    // - INVITE_TOKENS (potentially iterate and check `vault_id` field if no prefix)
-    // - CONTENT_ITEMS (prefix: `content:<content_id>`) -> Requires getting Content IDs first from CONTENT_INDEX
-    // - CONTENT_INDEX (prefix: `content_idx:<vault_id>`)
-    // - UPLOAD_STAGING (if moved to stable memory)
-    // - APPROVALS (prefix: `approval:<vault_id>`)
-    // - AUDIT_LOGS (prefix: `audit:<vault_id>`)
+    // Check unlock conditions (time, inactivity, approvals)
+    let conditions_met = check_unlock_conditions(&config).await?;
 
-    ic_cdk::print(format!("⏳ INFO: Placeholder for deleting associated data for vault {}", vault_id));
-    // Example (conceptual - requires actual iteration implementation):
-    // storage::delete_by_prefix(storage::VAULT_MEMBERS, format!("member:{}:", vault_id).as_bytes());
-    // storage::delete_by_prefix(storage::CONTENT_INDEX, format!("content_idx:{}:", vault_id).as_bytes());
-    // ... and so on for other maps ...
-
-    ic_cdk::print(format!("✅ INFO: Vault {} deletion process completed by caller {}", vault_id, caller));
-    Ok(())
+    if conditions_met {
+        ic_cdk::print(format!("🔓 INFO: Unlock conditions met for vault {}. Triggered by {}.", vault_id, caller));
+        set_vault_status(vault_id, VaultStatus::Unlockable, Some(caller)).await
+    } else {
+        ic_cdk::print(format!("⏳ INFO: Unlock trigger for vault {} received by {}, but conditions not yet met.", vault_id, caller));
+        // Optionally log which conditions failed
+        Err(VaultError::UnlockConditionsNotMet)
+    }
 }
 
-// TODO: Add functions for vault deletion (handle cleanup of members, content, etc.)
-// TODO: Add functions to get vaults by owner, etc. (requires secondary indexing or iteration) 
+/// Placeholder function to check if unlock conditions are met for a vault.
+/// This needs to implement the logic based on `config.unlock_conditions`.
+async fn check_unlock_conditions(config: &VaultConfig) -> Result<bool, VaultError> {
+    let current_time = time();
+    let conditions = &config.unlock_conditions;
+
+    // 1. Time-based unlock
+    if let Some(unlock_time) = conditions.time_based_unlock_epoch_sec {
+        if current_time >= unlock_time {
+            ic_cdk::print(format!(
+                "✅ UNLOCK CHECK: Vault {} passed time-based condition.",
+                config.vault_id
+            ));
+            return Ok(true);
+        }
+    }
+
+    // 2. Inactivity-based unlock
+    if let Some(inactivity_sec) = conditions.inactivity_duration_sec {
+        let last_active_time = config.updated_at; // Use updated_at as proxy for activity
+        let inactivity_duration = current_time.saturating_sub(last_active_time);
+        if inactivity_duration.as_secs() >= inactivity_sec {
+            ic_cdk::print(format!(
+                "✅ UNLOCK CHECK: Vault {} passed inactivity condition.",
+                config.vault_id
+            ));
+            return Ok(true);
+        }
+    }
+
+    // 3. Approval Threshold
+    // TODO: Implement fetching member approval status
+    // let approvals = get_approvals(config.vault_id).await?;
+    // let required_heirs = conditions.required_heir_approvals.unwrap_or(0);
+    // let required_witnesses = conditions.required_witness_approvals.unwrap_or(0);
+    // if approvals.heir_count >= required_heirs && approvals.witness_count >= required_witnesses {
+    //    ic_cdk::print(format!("Condition Met: Approval threshold ({}/{}) met.", required_heirs, required_witnesses));
+    //    return Ok(true);
+    // }
+
+    // If none of the conditions are met
+    Ok(false)
+}
+
+/// Lists all vaults owned by a specific principal.
+///
+/// # Arguments
+/// * `owner` - The PrincipalId of the owner.
+///
+/// # Returns
+/// * `Result<Vec<VaultConfig>, VaultError>` - A list of vault configurations or an error.
+pub async fn get_vaults_by_owner(owner: PrincipalId) -> Result<Vec<VaultConfig>, VaultError> {
+    let mut owned_vaults = Vec::new();
+    // This requires iterating through all vaults, which is inefficient.
+    // A secondary index (owner -> vault_id) would be needed for performance.
+    storage::VAULT_CONFIGS.with(|map_ref| {
+        let map = map_ref.borrow();
+        for (_key, value) in map.iter() {
+            let config: VaultConfig = value.0;
+            if config.owner == owner {
+                owned_vaults.push(config);
+            }
+        }
+    });
+    // Sort or paginate if needed
+    Ok(owned_vaults)
+}
+
+/// Lists all vaults a specific principal is a member of (Heir or Witness).
+///
+/// # Arguments
+/// * `member_principal` - The PrincipalId of the member.
+///
+/// # Returns
+/// * `Result<Vec<VaultConfig>, VaultError>` - A list of vault configurations or an error.
+pub async fn get_vaults_by_member(member_principal: PrincipalId) -> Result<Vec<VaultConfig>, VaultError> {
+    let mut member_vaults = Vec::new();
+    let mut vault_ids = std::collections::HashSet::new(); // Avoid duplicates if member of multiple vaults
+
+    // Inefficient: Iterate through all members
+    storage::VAULT_MEMBERS.with(|map_ref| {
+        let map = map_ref.borrow();
+        for (_key, value) in map.iter() {
+            let member: VaultMember = value.0;
+            if member.principal == member_principal {
+                vault_ids.insert(member.vault_id);
+            }
+        }
+    });
+
+    // Fetch config for each unique vault ID
+    for vault_id in vault_ids {
+        match get_vault_config(&vault_id).await {
+            Ok(config) => member_vaults.push(config),
+            Err(VaultError::VaultNotFound(_)) => { /* Vault might have been deleted, skip */ },
+            Err(e) => return Err(e), // Propagate other errors
+        }
+    }
+    Ok(member_vaults)
+}
+
+/// Lists all vaults (for admin use).
+/// Supports pagination.
+///
+/// # Arguments
+/// * `offset` - Number of vaults to skip.
+/// * `limit` - Maximum number of vaults to return.
+///
+/// # Returns
+/// * `Result<(Vec<VaultConfig>, u64), VaultError>` - A tuple containing a vector of vault configurations and the total count, or an error.
+pub async fn list_all_vaults(offset: u64, limit: usize) -> Result<(Vec<VaultConfig>, u64), VaultError> {
+    storage::VAULT_CONFIGS.with(|map_ref| {
+        let map = map_ref.borrow();
+        let total = map.len();
+        let vaults: Vec<VaultConfig> = map.iter()
+            .skip(offset as usize)
+            .take(limit)
+            .map(|(_key, value)| value.0) // Extract VaultConfig from Cbor
+            .collect();
+        Ok((vaults, total))
+    })
+}
+
+/// Deletes a vault and potentially associated data.
+/// Requires owner authorization.
+///
+/// # Arguments
+/// * `

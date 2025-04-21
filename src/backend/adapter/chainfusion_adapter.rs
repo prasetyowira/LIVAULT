@@ -96,7 +96,7 @@ pub async fn check_chainfusion_swap_status(
 
     Ok(ChainFusionStatusResponse {
         session_id: session_id.clone(),
-        status: mock_status, // Simulate completion
+        status: mock_status.clone(),
         icp_tx_hash: if mock_status == ChainFusionSwapStatus::Completed {
             Some(format!("mock_icp_tx_{}", session_id))
         } else {
