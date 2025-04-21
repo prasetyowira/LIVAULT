@@ -65,35 +65,66 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] Update Progress:** Regularly update `docs/progress.md` and `backend.tracking.md` as tasks are completed. (Done for P5/P6/P7/P8)
 
 ## Code TODO
--   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase (review files like `services/*`, `adapter/*`, `api.rs`, `utils/*`).
+-   **[ ] Code TODOs:** Address any remaining `// TODO` comments within the codebase (review files like `services/*`, `adapter/*`, `storage/*`, `api.rs`, `utils/*`).
+    *   `api.rs`: Configure `ADMIN_PRINCIPAL` (load from init/storage).
+    *   `api.rs`: Configure `CRON_CALLER` (load from init/storage for `daily_maintenance` guard).
+    *   `api.rs`: Add authorization check for `get_vault` (beyond owner).
+    *   `api.rs`: Add `request_download` endpoint implementation.
+    *   `utils/guards.rs`: Configure `MIN_CYCLES_THRESHOLD` (load from init/storage).
+    *   `utils/guards.rs`: Load Auth Principals (if needed separately) from storage/init args.
+    *   `utils/guards.rs`: Implement proper heir check logic/roles in `owner_or_heir_guard`.
+    *   `utils/guards.rs`: Implement proper role checks (`RoleGuard`).
+    *   `utils/guards.rs`: Implement member check guard (`member_guard`).
     *   `services/vault_service.rs`: Calculate `expires_at` based on plan (e.g., 10 years).
     *   `services/vault_service.rs`: Determine `storage_quota_bytes` based on plan.
-    *   `services/vault_service.rs`: Add logic to update unlock conditions, plan (handle prorate).
+    *   `services/vault_service.rs`: Add logic to update unlock conditions.
+    *   `services/vault_service.rs`: Implement plan change logic (handle prorate calculation - Line 170).
     *   `services/vault_service.rs`: Implement robust state transition validation (based on PRD).
     *   `services/vault_service.rs`: Add functions for vault deletion (cleanup members, content).
     *   `services/vault_service.rs`: Add functions to get vaults by owner (needs indexing/iteration).
+    *   `services/vault_service.rs`: Implement fetching member approval status (Line 390).
     *   `services/invite_service.rs`: Check vault state allows invites (Active, SetupComplete).
     *   `services/invite_service.rs`: Implement fetching existing members (for Shamir index check).
     *   `services/invite_service.rs`: Add function to revoke an invite token.
     *   `services/invite_service.rs`: Add function to list members for a vault.
     *   `services/invite_service.rs`: Add function to get member details.
-    *   `services/scheduler.rs`: Implement iteration over `INVITE_TOKENS` for cleanup.
-    *   `services/scheduler.rs`: Implement iteration over `VAULT_CONFIGS` for lifecycle checks.
-    *   `services/scheduler.rs`: Implement cleanup for in-memory `ACTIVE_UPLOADS`.
-    *   `services/scheduler.rs`: Add any other scheduled tasks from docs.
-    *   `services/upload_service.rs`: Consider moving `ACTIVE_UPLOADS` to stable memory.
+    *   `services/invite_service.rs`: Update `vault_service::get_vault_config` call signature (needs Principal?).
+    *   `services/invite_service.rs`: Refactor to use a dedicated members storage module.
+    *   `services/invite_service.rs`: Add logic based on `finalize_setup` requirements from arch doc.
+    *   `services/invite_service.rs`: Update `vault_service::save_vault_config` call if needed (async/Principal?).
+    *   `services/scheduler.rs`: Implement iteration over `INVITE_TOKENS` for cleanup (`purge_expired_invites`).
+    *   `services/scheduler.rs`: Implement iteration over `VAULT_CONFIGS` for lifecycle checks (`check_vault_lifecycles`).
+    *   `services/scheduler.rs`: Implement cleanup for `ACTIVE_UPLOADS` (in-memory or stable) (`cleanup_stale_uploads`).
+    *   `services/scheduler.rs`: Compact Audit Logs (periodic task).
+    *   `services/scheduler.rs`: Add other periodic tasks (e.g., recalculate metrics).
+    *   `services/scheduler.rs`: Add any other scheduled tasks identified in docs.
+    *   `services/upload_service.rs`: Store initiator `Principal` in `UploadSession` for auth checks.
+    *   `services/upload_service.rs`: Check vault status allowing uploads (e.g., Active).
     *   `services/upload_service.rs`: Use `caller` for auth/quota in `begin_chunked_upload`.
     *   `services/upload_service.rs`: Check upload size against `vault_config.storage_quota_bytes`.
     *   `services/upload_service.rs`: Validate `mime_type` based on `content_type`.
-    *   `services/upload_service.rs`: Add cleanup for stale/abandoned uploads in `ACTIVE_UPLOADS`.
-    *   `services/upload_service.rs`: Add function to update vault storage usage.
-    *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for payments.
-    *   `services/payment_service.rs`: Add function to close payment session after vault creation.
-    *   `api.rs`: Add authorization check for `get_vault`.
-    *   `api.rs`: Add `request_download` endpoint implementation.
-    *   `api.rs`: Add `daily_maintenance` endpoint guard configuration (cron caller).
-    *   `api.rs`: Configure `ADMIN_PRINCIPAL`.
-    *   `utils/guards.rs`: Configure `MIN_CYCLES_THRESHOLD`.
+    *   `services/upload_service.rs`: Add cleanup for stale/abandoned uploads (if not handled by scheduler).
+    *   `services/upload_service.rs`: Add function to update vault storage usage after upload completion.
+    *   `services/upload_service.rs`: Adapt key creation based on how `VAULT_CONFIGS` is keyed (if needed).
+    *   `services/upload_service.rs`: Update content index logic (may move to `storage::content`).
+    *   `services/upload_service.rs`: Add function to get content item details.
+    *   `services/upload_service.rs`: Add function to delete content item (update index & storage usage).
+    *   `services/upload_service.rs`: Add function to list content items for a vault (using index).
+    *   `services/upload_service.rs`: Consider if upload sessions need internal IDs + secondary index.
+    *   `services/payment_service.rs`: Generate a unique temporary principal/subaccount for ICP payments.
+    *   `services/payment_service.rs`: Add function to close/finalize payment session.
+    *   `services/payment_service.rs`: Refine ICP ledger verification (potentially use Tx hash).
+    *   `services/payment_service.rs`: Add function to handle ChainFusion payments (initiate swap, verify completion).
+    *   `services/payment_service.rs`: Add function to get payment session status.
+    *   `services/payment_service.rs`: Implement actual billing log query (e.g., get history).
+    *   `storage/mod.rs`: Add modules for vault_configs, members, audit_logs, etc., if fully modularizing storage.
+    *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
+    *   `storage/content.rs`: Add function to update content item (handle secondary index).
+    *   `storage/uploads.rs`: Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
+    *   `storage/uploads.rs`: Determine appropriate memory ID for upload buffer/staging.
+    *   `storage/uploads.rs`: Update function signatures/types for `UploadSessionData` (e.g., `save_chunk`).
+    *   `storage/uploads.rs`: Add functions for managing upload chunks (likely needs separate storage).
+    *   `adapter/chainfusion_adapter.rs`: (Covered by Phase 7 tasks: implement outcalls, configure URL).
 
 ## AI Question
-*   **[ ] `services/upload_service.rs`:** Current `ACTIVE_UPLOADS` is in-memory. Consider moving to stable storage (`ic-stable-structures::Stash`) if uploads must survive canister upgrades. Evaluate trade-offs (complexity vs. persistence). 
+*   **[ ] `services/upload_service.rs` / `storage/uploads.rs`:** Current `ACTIVE_UPLOADS` in `UploadService` is in-memory. Consider moving to stable storage (`ic-stable-structures::Stash` or custom map) in `storage/uploads.rs` if uploads must survive canister upgrades. Evaluate trade-offs (complexity vs. persistence). 
