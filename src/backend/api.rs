@@ -472,7 +472,7 @@ async fn trigger_unlock(req: TriggerUnlockRequest) -> Result<(), VaultError> {
         Some("Unlock sequence triggered by witness.".to_string())
     ))?;
 
-    Ok(()})
+    Ok({})
 }
 
 // --- Maintenance Endpoint ---

@@ -12,12 +12,12 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 ## Phase 2: Services Layer
 -   **[ ] Task 2.5:** Perform manual edge-case testing of implemented services (`VaultService`, `InviteService`, `UploadService`).
 -   **[X] `VaultService`:** Refine state transition validation logic in `set_vault_status` based on the canonical states in `prd.md`.
--   **[ ] `VaultService`:** Implement logic to fetch related data where needed (e.g., members for Shamir index calculation).
 -   **[X] `VaultService`:** Implement storage usage tracking and updates. (**Note:** Helper `update_storage_usage` implemented, needs to be called by content add/remove logic in other services).
 -   **[~] `VaultService`:** Flesh out detailed authorization logic beyond basic owner checks. (Basic role checks added for some actions, more granularity may be needed).
 -   **[X] `VaultService`:** Implement function to be called by `PaymentService` to update vault status post-payment.
--   **[ ] `InviteService`:** Implement actual Shamir index assignment logic (fetching used indices).
+-   **[X] `InviteService`:** Implement Shamir index assignment logic (fetching used indices).
 -   **[X] `InviteService`:** Implement calculation of token expiry dates accurately.
+-   **[X] `InviteService`:** Implement Shamir secret sharing using `vsss-rs`. (**Note:** Uses placeholder secret generation, needs update).
 -   **[!] `UploadService`:** Consider moving upload staging from in-memory `HashMap` to stable memory. (**CRITICAL:** Service still uses in-memory map; `storage::uploads` has stable chunk storage but is unused by service).
 -   **[ ] `SchedulerService`:** Implement the actual logic within `purge_expired_invites`, `check_vault_lifecycles`, `cleanup_stale_uploads`, `compact_audit_logs`.
 -   **[ ] `SchedulerService`:** Implement efficient iteration methods for scheduler tasks over stable storage.
@@ -62,7 +62,8 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] API Authorization:** Review and apply specific member/role guards in `api.rs` where needed (beyond owner/admin).
 -   **[ ] `InviteService` Implementation:**
     *   Check vault state allows invites.
-    *   Implement fetching existing members (for Shamir index check).
+    *   **Refine Shamir secret handling (replace placeholder generation).**
+    *   **Refine Shamir parameter `n` (total shares) based on vault plan/config.**
     *   Add function to revoke an invite token.
     *   Add function to list members for a vault.
     *   Add function to get member details.
@@ -75,11 +76,10 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   Check upload size against `vault_config.storage_quota_bytes`.
     *   Validate `mime_type` based on `content_type`.
     *   **Call `vault_service::update_storage_usage` on upload completion.**
-    *   Add function to update vault storage usage after upload completion. // Redundant with above
     *   Implement get/delete/list content item functions (or move to appropriate service). **Note:** Should call `vault_service::update_storage_usage` on deletion.
 -   **[ ] `SchedulerService` Implementation:**
     *   Implement iteration logic for cleanup tasks (`purge_expired_invites`, `check_vault_lifecycles`, `cleanup_stale_uploads`).
     *   Implement `compact_audit_logs` call.
     *   Add other periodic tasks (e.g., recalculate metrics).
 -   **[ ] `VaultService` Implementation:**
-    *   Implement Shamir index fetching logic (when called by `InviteService`).
+    *   (Shamir index logic moved to InviteService).

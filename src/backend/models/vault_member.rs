@@ -30,6 +30,19 @@ pub struct VaultMember {
     pub has_approved_unlock: bool, // Track approval status
 }
 
+#[derive(Clone, Debug, candid::CandidType, serde::Deserialize, serde::Serialize)]
+pub struct MemberProfile {
+    pub member_id: MemberId,
+    pub vault_id: VaultId,
+    pub principal: PrincipalId,
+    pub role: Role,
+    pub status: MemberStatus,
+    pub shamir_share_index: u8,
+    pub name: Option<String>,
+    pub relation: Option<String>,
+    pub added_at: Timestamp,
+}
+
 // Implement Default if needed
 impl Default for VaultMember {
     fn default() -> Self {

@@ -629,4 +629,38 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
 *   [`docs/todo.md`](mdc:docs/todo.md) (Updated)
 
+---
+
+## 2024-07-29: Implement Shamir Sharing in InviteService
+
+**Overview:** Integrated `vsss-rs` library to perform Shamir Secret Sharing during invite generation.
+
+**Key Components Implemented/Updated:**
+-   **`Cargo.toml`:** Added `vsss-rs`, `p256`, `elliptic-curve`, `rand_core` dependencies.
+-   **`models/vault_invite_token.rs`:** Added `share_data: Vec<u8>` field to store serialized share data.
+-   **`services/invite_service.rs`:**
+    *   Added necessary imports and type aliases for Shamir logic (`ShamirIdentifier`, `ShamirValue`, `ShamirShare`).
+    *   Implemented `IcRng` struct wrapping `raw_rand` for `vsss-rs` compatibility.
+    *   Modified `generate_new_invite` function:
+        *   Determines Shamir threshold `t` from `vault_config.unlock_conditions`.
+        *   Determines total shares `n` (using placeholder `MAX_MEMBERS`, needs refinement based on plan/config).
+        *   Implemented logic to find the next available `shamir_share_index` (1 to `n`).
+        *   Added **placeholder** logic to generate a 32-byte secret (needs replacement with actual vault secret handling).
+        *   Converts the secret to `p256::Scalar`.
+        *   Calls `vsss_rs::shamir::split_secret` to generate shares.
+        *   Extracts the relevant share based on the assigned index.
+        *   Serializes the share value (`p256::Scalar`) to bytes.
+        *   Stores the serialized `share_data` in the `VaultInviteToken`.
+
+**Dependencies:** Relies on `vsss-rs`, `p256`, `elliptic-curve`, `rand_core`, existing storage modules.
+
+**Notes & TODOs:**
+*   **Placeholder Secret:** The secret generation in `generate_new_invite` is a placeholder and must be replaced with secure retrieval/handling of the actual vault content encryption key.
+*   **Parameter `n`:** Determination of the total number of shares (`n`) needs refinement based on the specific vault plan/configuration (e.g., max allowed members).
+
+**Relevant Docs:**
+*   [`src/backend/services/invite_service.rs`](mdc:src/backend/services/invite_service.rs)
+*   [`src/backend/models/vault_invite_token.rs`](mdc:src/backend/models/vault_invite_token.rs)
+*   [`docs/todo.md`](mdc:docs/todo.md) (Updated)
+
 --- 
