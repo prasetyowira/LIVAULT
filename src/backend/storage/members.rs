@@ -1,13 +1,14 @@
 // src/backend/storage/members.rs
 use crate::storage::memory::{get_vault_members_memory, Memory};
 use crate::storage::storable::Cbor;
-use crate::models::{
-    common::{VaultId, PrincipalId},
-    vault_member::VaultMember,
-};
+use crate::models::{common::{VaultId, PrincipalId}, vault_config, vault_member::VaultMember};
 use ic_stable_structures::StableBTreeMap;
 use std::cell::RefCell;
-use candid::Principal; // Needed for Principal::min_id / max_id
+use candid::Principal;
+use crate::error::VaultError;
+use crate::models::vault_config::VaultConfig;
+use crate::storage;
+// Needed for Principal::min_id / max_id
 
 type StorableVaultMember = Cbor<VaultMember>;
 
@@ -61,6 +62,29 @@ pub fn get_members_by_vault(vault_id: &VaultId) -> Vec<VaultMember> {
             .collect()
     })
 }
+
+pub fn get_vaults_by_member(member_principal: PrincipalId) -> Vec<VaultConfig> {
+    let mut member_vaults = Vec::new();
+    let mut vault_ids = std::collections::HashSet::new(); // Avoid duplicates if member of multiple vaults
+
+    MEMBERS.with(|map_ref| {
+        let map = map_ref.borrow();
+        for (_key, value) in map.iter() {
+            let member: VaultMember = value.0;
+            if member.principal == member_principal {
+                vault_ids.insert(member.vault_id);
+            }
+        }
+    });
+
+    // Fetch config for each unique vault ID
+    for vault_id in vault_ids {
+        let vault_config = storage::get_vault_config(&vault_id).unwrap();
+        member_vaults.push(vault_config);
+    }
+    member_vaults
+}
+
 
 /// Checks if a principal is a member of a specific vault.
 pub fn is_member(vault_id: &VaultId, principal_id: &PrincipalId) -> bool {

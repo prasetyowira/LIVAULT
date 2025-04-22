@@ -16,6 +16,16 @@
       },
       "type": "custom",
       "wasm": "https://github.com/dfinity/internet-identity/releases/latest/download/internet_identity_dev.wasm.gz"
+    },
+    "icp_ledger_canister": {
+      "type": "custom",
+      "candid": "https://raw.githubusercontent.com/dfinity/ic/<VERSION>/rs/ledger_suite/icp/ledger.did",
+      "wasm": "https://download.dfinity.systems/ic/<VERSION>/canisters/ledger-canister.wasm.gz",
+      "remote": {
+        "id": {
+          "ic": "ryjl3-tyaaa-aaaaa-aaaba-cai"
+        }
+      }
     }
   },
   "defaults": {

@@ -102,8 +102,8 @@ pub enum VaultError {
     #[error("Ledger interaction error")]
     LedgerError(String),
 
-    #[error("Invalid state transition requested")]
-    InvalidStateTransition,
+    #[error("Invalid state transition requested: {0}")]
+    InvalidStateTransition(String),
 
     #[error("Vault is not in an unlockable state")]
     NotUnlockable,

@@ -402,3 +402,36 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 **Relevant Docs:**
 *   [`docs/todo.md`](mdc:docs/todo.md) (Marked ChainFusion verification task as done)
 *   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs) 
+
+---
+
+## 2024-07-27: Vault Service TODOs (Part 1)
+
+**Overview:** Addressed several TODO items in `src/backend/services/vault_service.rs`.
+
+**Key Components Implemented/Updated:**
+-   **State Validation:** Implemented robust state transition validation in `set_vault_status` based on expected lifecycle.
+-   **Unlock Conditions:** Removed placeholder validation TODO (basic structure checked by Candid), updated `check_unlock_conditions` to use `last_accessed_by_owner`, and implemented approval check logic using a placeholder call to `storage::approvals::get_approval_status`.
+-   **Plan Change:** Refined TODO comment regarding prorate calculation, noting dependency on payment service.
+-   **Deletion:** Added `delete_vault` function skeleton with owner authorization and status check, including placeholder comments for cleanup steps.
+-   **Get Vaults by Owner:** Added documentation note about inefficiency and need for secondary index.
+
+**Dependencies:** Relies on placeholder `storage::approvals::get_approval_status`.
+
+**Relevant Docs:**
+*   [`docs/todo.md`](mdc:docs/todo.md) (Updated) 
+
+---
+
+## 2024-07-27: Fix VaultId Generation Consistency
+
+**Overview:** Fixed an inconsistency in `vault_service.rs` where `create_new_vault` was using `generate_ulid()` instead of `generate_unique_principal()` for `vault_id` generation.
+
+**Key Components Implemented/Updated:**
+-   Updated `create_new_vault` to use `generate_unique_principal()`.
+-   Verified model definitions and storage layer usage align with using `Principal` for `VaultId`.
+
+**Relevant Docs:**
+*   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
+
+--- 

@@ -140,8 +140,8 @@ Plan price base + actuarial factor (0‑25 % based on age bracket)
 > 🧮 Upgrade-prorate formula stays compatible with this structure.
 
 ### Accepted Payment via:
-  - ICP token
-  - ChainFusion integration (crypto swap)
+  - ICP token via icp ledger
+  - ChainFusion integration (crypto swap) // Future Works
 
 ### Plan upgrade rules:
   - **prorate formula**: 

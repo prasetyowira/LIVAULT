@@ -286,11 +286,6 @@ async fn verify_icp_ledger_payment(session: &PaymentSession) -> Result<String, V
         None => return Err(VaultError::InternalError("Subaccount missing in payment session".to_string()))
     };
     let account = AccountIdentifier::new(&canister_principal, &subaccount);
-
-    // Removed the problematic parse call
-    // let account: AccountIdentifier = session.pay_to_account_id.parse()
-    //     .map_err(|e| VaultError::InternalError(format!("Failed to parse payment account identifier '{}': {}", session.pay_to_account_id, e)))?;
-
     let args = AccountBalanceArgs { account };
 
     ic_cdk::print(format!("INFO: Querying balance for account: {}", account.to_hex())); // Use print macro

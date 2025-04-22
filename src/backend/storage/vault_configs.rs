@@ -1,10 +1,7 @@
 // src/backend/storage/vault_configs.rs
 use crate::storage::memory::{get_vault_config_memory, Memory};
 use crate::storage::storable::{Cbor, StorableString};
-use crate::models::{
-    common::VaultId,
-    vault_config::VaultConfig,
-};
+use crate::models::{common::VaultId, vault_config::VaultConfig, PrincipalId};
 use ic_stable_structures::StableBTreeMap;
 use std::cell::RefCell;
 
@@ -39,6 +36,20 @@ pub fn get_vault_config(vault_id: &VaultId) -> Option<VaultConfig> {
             .get(&key)
             .map(|cbor| cbor.0)
     })
+}
+
+pub fn get_vaults_config_by_owner(owner: PrincipalId) -> Vec<VaultConfig> {
+    let mut owned_vaults = Vec::new();
+    CONFIGS.with(|map_ref| {
+        let map = map_ref.borrow();
+        for (_key, value) in map.iter() {
+            let config: VaultConfig = value.0;
+            if config.owner == owner {
+                owned_vaults.push(config);
+            }
+        }
+    });
+    owned_vaults
 }
 
 /// Removes a vault configuration.
