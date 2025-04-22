@@ -39,7 +39,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[X] Ledger Interaction:** Implement actual ICP ledger query logic in `verify_icp_ledger_payment` using appropriate crates/methods (replace placeholder).
 -   **[X] Refactor Payment Verification:** Change `verify_icp_ledger_payment` to use `query_blocks` instead of `account_balance` for robust verification, based on ICP ledger documentation review (2024-07-28).
 -   **[X] Use ic-ledger-types:** Refactored `verify_icp_ledger_payment` to use standard types from `ic-ledger-types` crate (2024-07-28).
--   **[ ] Pay-to Principal:** Implement secure derivation of a unique subaccount/principal per payment session in `initialize_payment_session` (replace placeholder using `caller`).
+-   **[X] Pay-to Principal:** Implement secure derivation of a unique subaccount/principal per payment session in `initialize_payment_session` (replace placeholder using `caller`). **DONE - Uses api::id() + random subaccount.**
 
 ## Phase 5: Security & Guards - COMPLETED (2024-07-25)
 
@@ -113,7 +113,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/upload_service.rs`: Add function to delete content item (update index & storage usage).
     *   `services/upload_service.rs`: Add function to list content items for a vault (using index).
     *   `services/upload_service.rs`: Consider if upload sessions need internal IDs + secondary index.
-    *   `services/payment_service.rs`: **[X]** Generate a unique temporary principal/subaccount for ICP payments.
+    *   `services/payment_service.rs`: **[X]** Generate a unique temporary principal/subaccount for ICP payments. **DONE - Uses api::id() + random subaccount.**
     *   `services/payment_service.rs`: **[X]** Add function to close/finalize payment session.
     *   `services/payment_service.rs`: **[X]** Refine ICP ledger verification (implemented balance check).
     *   `services/payment_service.rs`: **[X]** Refactor `verify_icp_ledger_payment` to use `query_blocks` instead of `account_balance`.
