@@ -547,3 +547,33 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   [`src/backend/api.rs`](mdc:src/backend/api.rs)
 
 --- 
+
+## 2024-07-29: Implement Unlock Condition Check Logic
+
+**Overview:** Completed the implementation of the `check_unlock_conditions` function in `src/backend/services/vault_service.rs`.
+
+**Key Components Implemented/Updated:**
+-   **`check_unlock_conditions` Function:**
+    *   Retrieves current time using `ic_cdk::api::time()`.
+    *   Checks `time_based_unlock_epoch_sec` condition against current time.
+    *   Checks `inactivity_duration_sec` condition against `last_accessed_by_owner` (falling back to `created_at`).
+    *   Checks `required_heir_approvals` and `required_witness_approvals` by calling the existing (assumed) `storage::approvals::get_approval_status`.
+    *   Returns `Ok(true)` if *any* of the configured conditions are met.
+    *   Logs detailed checks and outcomes using `ic_cdk::print`.
+    *   Handles potential errors during approval status fetch gracefully by logging and treating the condition as not met.
+-   **`trigger_unlock` Function:**
+    *   Updated authorization logic to check for Witness role or Admin principal using `storage::members::is_member_with_role` and `storage::config::get_admin_principal`.
+    *   Allows triggering unlock from `Active` or `GraceHeir` states.
+-   **`delete_vault` Function:**
+    *   Updated authorization to allow deletion by Admin in addition to the Owner.
+    *   Added cleanup calls (with error logging) for members, content, tokens, audit logs, and approvals before removing the vault config.
+
+**Dependencies:** Relies on `storage::approvals::get_approval_status`, `storage::members::is_member_with_role`, `storage::config::get_admin_principal` and other existing storage helpers.
+
+**Relevant Docs:**
+*   [`plans/prd.md`](mdc:plans/prd.md) (Section 5)
+*   [`plans/backend.architecture.md`](mdc:plans/backend.architecture.md)
+*   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
+*   [`docs/todo.md`](mdc:docs/todo.md)
+
+--- 

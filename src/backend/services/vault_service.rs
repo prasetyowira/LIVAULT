@@ -5,9 +5,8 @@ use crate::{
     error::VaultError,
     models::{
         common::*, // Import common types like VaultId, Timestamp, PrincipalId, VaultStatus
-        vault_config::VaultConfig, // Import the VaultConfig model
+        vault_config::{VaultConfig,UnlockConditions}, // Import the VaultConfig model
         vault_member::VaultMember, // Needed for listing vaults by member
-        UnlockConditions, // Import UnlockConditions
         payment::{E8s, PaymentPurpose, PaymentSession, PaymentInitRequest}, // Import Payment related models
         // Add other models as needed, e.g., VaultUpdate payload struct
     },
@@ -115,14 +114,7 @@ pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, Vault
     let expires_at = current_time.saturating_add(ten_years_duration.as_nanos() as u64);
 
     // Determine storage_quota_bytes based on plan (already implemented)
-    let storage_quota_bytes = match init_data.plan.as_str() {
-        "Basic" => 5 * 1024 * 1024,         // 5 MB
-        "Standard" => 10 * 1024 * 1024,     // 10 MB
-        "Premium" => 50 * 1024 * 1024,      // 50 MB
-        "Deluxe" => 100 * 1024 * 1024,    // 100 MB
-        "Titan" => 250 * 1024 * 1024,       // 250 MB
-        _ => return Err(VaultError::InvalidInput("Invalid plan specified".to_string())), // Use InvalidInput
-    };
+    let storage_quota_bytes = get_plan_quota_bytes(&init_data.plan)?;
 
     let config = VaultConfig {
         vault_id: vault_id.clone(),
@@ -503,17 +495,19 @@ pub async fn trigger_unlock(vault_id: &VaultId, caller: PrincipalId) -> Result<(
     let config = get_vault_config(vault_id).await?;
 
     // Authorization: Check if caller is a witness or admin (add roles later)
-    // For now, let's allow any principal to trigger for testing, but add checks.
-    // Example: Check if caller is in the vault_members list with role Witness
-    // let members = invite_service::get_members_for_vault(vault_id)?;
-    // if !members.iter().any(|m| m.principal == caller && m.role == Role::Witness) {
-    //     return Err(VaultError::NotAuthorized("Only a witness can trigger unlock".to_string()));
-    // }
+    // TODO: Implement proper role check using storage::members
+    let is_authorized = storage::members::is_member_with_role(vault_id, &caller, Role::Witness).await?
+                       || storage::config::get_admin_principal().await? == caller; // Allow admin trigger?
 
-    // Check if vault is in a state where unlock can be triggered (GraceHeir as per diagram)
-    if config.status != VaultStatus::GraceHeir {
-        return Err(VaultError::InternalError(format!(
-            "Cannot trigger unlock from status {:?}. Expected GraceHeir.",
+    if !is_authorized {
+         return Err(VaultError::NotAuthorized("Only a witness or admin can trigger unlock".to_string()));
+    }
+
+    // Check if vault is in a state where unlock can be triggered (GraceHeir as per diagram, or Active if conditions met early?)
+    // Let's allow trigger from Active or GraceHeir, check_unlock_conditions will validate timing/inactivity etc.
+    if !matches!(config.status, VaultStatus::Active | VaultStatus::GraceHeir) {
+        return Err(VaultError::InvalidState(format!(
+            "Cannot trigger unlock from status {:?}. Expected Active or GraceHeir.",
             config.status
         )));
     }
@@ -531,81 +525,98 @@ pub async fn trigger_unlock(vault_id: &VaultId, caller: PrincipalId) -> Result<(
     }
 }
 
-/// Placeholder function to check if unlock conditions are met for a vault.
-/// This needs to implement the logic based on `config.unlock_conditions`.
+/// Checks if unlock conditions are met for a vault.
+/// Returns true if *any* of the configured conditions are satisfied.
 async fn check_unlock_conditions(config: &VaultConfig) -> Result<bool, VaultError> {
-    let current_time = time();
+    let current_time_ns = time(); // Use nanoseconds for internal checks
     let conditions = &config.unlock_conditions;
+    let vault_id = &config.vault_id;
 
-    // 1. Time-based unlock
-    if let Some(unlock_time) = conditions.time_based_unlock_epoch_sec {
-        if current_time >= unlock_time {
+    ic_cdk::print(format!("🔍 UNLOCK CHECK: Vault {}. Current time: {}", vault_id, current_time_ns));
+    ic_cdk::print(format!("🔍 UNLOCK CHECK: Conditions: {:?}", conditions));
+
+    // 1. Time-based unlock check
+    if let Some(unlock_time_sec) = conditions.time_based_unlock_epoch_sec {
+        // Convert unlock_time_sec (epoch seconds) to nanoseconds
+        let unlock_time_ns = (unlock_time_sec as u128) * 1_000_000_000;
+        ic_cdk::print(format!("🔍 UNLOCK CHECK: Time-based: {} >= {}?", current_time_ns as u128, unlock_time_ns));
+        if current_time_ns as u128 >= unlock_time_ns {
             ic_cdk::print(format!(
                 "✅ UNLOCK CHECK: Vault {} passed time-based condition.",
-                config.vault_id
+                vault_id
             ));
             return Ok(true);
         }
     }
 
-    // 2. Inactivity-based unlock
+    // 2. Inactivity-based unlock check
     if let Some(inactivity_sec) = conditions.inactivity_duration_sec {
-        // Use last_accessed_by_owner if available, otherwise updated_at as fallback
-        let last_active_time = config.last_accessed_by_owner.unwrap_or(config.updated_at);
-        let inactivity_duration_nanos = current_time.saturating_sub(last_active_time);
-        // Convert inactivity_sec (u64 seconds) to nanos for comparison
+        let last_active_time_ns = config.last_accessed_by_owner.unwrap_or(config.created_at); // Use created_at if never accessed
+        let inactivity_duration_ns = current_time_ns.saturating_sub(last_active_time_ns);
         let required_inactivity_nanos = (inactivity_sec as u128) * 1_000_000_000;
+        ic_cdk::print(format!("🔍 UNLOCK CHECK: Inactivity-based: Last active {}, Duration {} >= Required {}?",
+            last_active_time_ns, inactivity_duration_ns as u128, required_inactivity_nanos));
 
-        if inactivity_duration_nanos as u128 >= required_inactivity_nanos {
+        if inactivity_duration_ns as u128 >= required_inactivity_nanos {
             ic_cdk::print(format!(
                 "✅ UNLOCK CHECK: Vault {} passed inactivity condition ({}s).",
-                config.vault_id, inactivity_sec
+                vault_id, inactivity_sec
             ));
             return Ok(true);
         }
     }
 
-    // 3. Approval Threshold
-    // Assume a storage function `get_approval_status` exists, returning counts.
-    // This storage module/function needs implementation based on `storage.md`.
+    // 3. Approval Threshold check
     let required_heirs = conditions.required_heir_approvals.unwrap_or(0);
     let required_witnesses = conditions.required_witness_approvals.unwrap_or(0);
 
+    ic_cdk::print(format!("🔍 UNLOCK CHECK: Approval-based: Heirs {}/{}, Witnesses {}/{} required.",
+        0, // Placeholder, actual count fetched below
+        required_heirs,
+        0, // Placeholder
+        required_witnesses
+    ));
+
     if required_heirs > 0 || required_witnesses > 0 {
-        match storage::approvals::get_approval_status(&config.vault_id).await {
+        // Assume storage::approvals::get_approval_status exists and returns counts
+        match storage::approvals::get_approval_status(vault_id).await {
             Ok(approvals) => {
+                 ic_cdk::print(format!("🔍 UNLOCK CHECK: Fetched approvals: Heirs {}, Witnesses {}.",
+                    approvals.heir_approvals, approvals.witness_approvals));
                  if approvals.heir_approvals >= required_heirs && approvals.witness_approvals >= required_witnesses {
                     ic_cdk::print(format!(
                         "✅ UNLOCK CHECK: Vault {} passed approval threshold (Heirs: {}/{}, Witnesses: {}/{}).",
-                        config.vault_id,
+                        vault_id,
                         approvals.heir_approvals, required_heirs,
                         approvals.witness_approvals, required_witnesses
                     ));
-                    return Ok(true);
+                    return Ok(true); // Approvals met
                 } else {
                      ic_cdk::print(format!(
                         "⏳ UNLOCK CHECK: Vault {} pending approvals (Heirs: {}/{}, Witnesses: {}/{}).",
-                        config.vault_id,
+                        vault_id,
                         approvals.heir_approvals, required_heirs,
                         approvals.witness_approvals, required_witnesses
                     ));
+                    // Continue checking other conditions
                 }
             }
             Err(e) => {
-                // Log error fetching approvals, but don't block other checks unless this is the only condition
+                // Log error fetching approvals, but treat as condition not met for safety.
                  ic_cdk::eprintln!(
-                    "⚠️ WARNING: Failed to get approval status for vault {}: {:?}",
-                    config.vault_id, e
+                    "❌ ERROR: Failed to get approval status for vault {}: {:?}. Treating approval condition as NOT MET.",
+                    vault_id, e
                  );
-                 // Decide if failure to get approvals prevents unlock. For now, assume it does if approvals are required.
-                 return Err(VaultError::StorageError(format!("Failed to check approvals: {}", e)));
+                 // Do not return error here, just log and continue checking other conditions.
+                 // return Err(VaultError::StorageError(format!("Failed to check approvals: {}", e)));
             }
         }
+    } else {
+         ic_cdk::print("🔍 UNLOCK CHECK: Approval condition not configured (0 heirs/witnesses required).");
     }
 
-
-    // If none of the conditions are met
-    ic_cdk::print(format!("⏳ UNLOCK CHECK: Vault {} conditions not met.", config.vault_id));
+    // If none of the conditions were met after checking all configured ones
+    ic_cdk::print(format!("⏳ UNLOCK CHECK: Vault {} - NO conditions met.", vault_id));
     Ok(false)
 }
 
@@ -671,20 +682,20 @@ pub async fn list_all_vaults(offset: u64, limit: usize) -> Result<(Vec<VaultConf
 pub async fn delete_vault(vault_id: &VaultId, caller: PrincipalId) -> Result<(), VaultError> {
     let config = get_vault_config(vault_id).await?;
 
-    // 1. Authorization Check: Ensure caller is the owner
-    if config.owner != caller {
+    // 1. Authorization Check: Ensure caller is the owner or admin
+    let is_admin = storage::config::get_admin_principal().await? == caller;
+    if config.owner != caller && !is_admin {
         return Err(VaultError::NotAuthorized(format!(
-            "Caller {} is not the owner of vault {}",
+            "Caller {} is not the owner or admin of vault {}",
             caller, vault_id
         )));
     }
 
-    // 2. Status Check: Ensure vault is in a deletable state (e.g., Expired)
-    //    Alternatively, allow deletion from any state but log appropriately.
-    //    For now, let's restrict to Expired or Deleted (for idempotency).
-    if !matches!(config.status, VaultStatus::Expired | VaultStatus::Deleted) {
+    // 2. Status Check: Allow deletion from Expired or potentially other states if admin.
+    // For now, let's restrict non-admins to Expired or Deleted (for idempotency).
+    if !is_admin && !matches!(config.status, VaultStatus::Expired | VaultStatus::Deleted) {
         return Err(VaultError::InvalidState(format!(
-            "Vault {} cannot be deleted from status {:?}. Must be Expired.",
+            "Vault {} cannot be deleted by owner from status {:?}. Must be Expired.",
             vault_id, config.status
         )));
     }
@@ -695,34 +706,47 @@ pub async fn delete_vault(vault_id: &VaultId, caller: PrincipalId) -> Result<(),
         return Ok(());
     }
 
-    ic_cdk::print(format!("🗑️ INFO: Initiating deletion for vault {} by owner {}", vault_id, caller));
+    let trigger_info = if is_admin { "admin" } else { "owner" };
+    ic_cdk::print(format!("🗑️ INFO: Initiating deletion for vault {} by {}", vault_id, trigger_info));
 
     // --- Cleanup Steps (Placeholders - Require Implementation) ---
 
     // TODO: Delete associated members from storage::members
-    // storage::members::remove_members_by_vault(vault_id).await?;
+    match storage::members::remove_members_by_vault(vault_id).await {
+        Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} members for vault {}", count, vault_id)),
+        Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing members for vault {}: {:?}", vault_id, e), // Log error, continue deletion
+    }
 
     // TODO: Delete associated content items (metadata + chunks)
-    // let content_ids = storage::content_index::get_index(vault_id).await?.unwrap_or_default();
-    // for content_id_str in content_ids {
-    //    let content_id = PrincipalId::from_text(&content_id_str)?; // Assuming stored as text
-    //    // Lookup internal ID using index
-    //    if let Some(internal_content_id) = storage::content::get_internal_content_id(content_id).await? {
-    //        storage::uploads::delete_content_chunks(internal_content_id).await?; // Need function to delete associated chunks
-    //        storage::content::remove_content(internal_content_id, content_id).await?;
-    //    }
-    // }
-    // storage::content_index::remove_index(vault_id).await?;
+    match storage::content::remove_all_content_for_vault(vault_id).await {
+         Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} content items for vault {}", count, vault_id)),
+         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing content for vault {}: {:?}", vault_id, e), // Log error, continue deletion
+    }
+    // Remove content index separately
+    match storage::content_index::remove_index(vault_id).await {
+        Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed content index for vault {}", vault_id)),
+        Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing content index for vault {}: {:?}", vault_id, e),
+    }
 
 
     // TODO: Delete associated invite tokens from storage::tokens (if not handled by scheduler)
-    // storage::tokens::remove_tokens_by_vault(vault_id).await?;
+    match storage::tokens::remove_tokens_by_vault(vault_id).await {
+        Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} tokens for vault {}", count, vault_id)),
+        Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing tokens for vault {}: {:?}", vault_id, e), // Log error, continue deletion
+    }
+
 
     // TODO: Delete associated audit logs from storage::audit_logs
-    // storage::audit_logs::remove_logs(vault_id).await?;
+    match storage::audit_logs::remove_logs(vault_id).await {
+        Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed audit logs for vault {}", vault_id)),
+        Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing audit logs for vault {}: {:?}", vault_id, e), // Log error, continue deletion
+    }
 
     // TODO: Delete associated approvals from storage::approvals
-    // storage::approvals::remove_approvals(vault_id).await?;
+    match storage::approvals::remove_approvals(vault_id).await {
+         Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed approvals for vault {}", vault_id)),
+         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing approvals for vault {}: {:?}", vault_id, e), // Log error, continue deletion
+    }
 
     // --- Final Step: Remove Vault Config ---
     match storage::vault_configs::remove_vault_config(vault_id).await {

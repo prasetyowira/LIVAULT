@@ -53,4 +53,16 @@ impl Default for VaultConfig {
             // schema_version: 1,
         }
     }
-} 
+}
+
+impl PartialEq for UnlockConditions {
+    fn eq(&self, other: &Self) -> bool {
+        self.time_based_unlock_epoch_sec == other.time_based_unlock_epoch_sec
+            && self.inactivity_duration_sec == other.inactivity_duration_sec
+            && self.required_heir_approvals == other.required_heir_approvals
+            && self.required_witness_approvals == other.required_witness_approvals
+    }
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
+}
