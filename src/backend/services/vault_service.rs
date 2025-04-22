@@ -8,6 +8,7 @@ use crate::{
         vault_config::VaultConfig, // Import the VaultConfig model
         vault_member::VaultMember, // Needed for listing vaults by member
         UnlockConditions, // Import UnlockConditions
+        payment::{PaymentPurpose, PaymentSession, PaymentInitRequest}, // Import Payment related models
         // Add other models as needed, e.g., VaultUpdate payload struct
     },
     utils::crypto::generate_unique_principal, // Import Principal generation
@@ -16,6 +17,11 @@ use crate::storage;
 use ic_cdk::api::{time, caller}; // For timestamps and caller
 use std::time::Duration; // For duration calculations
 use candid::Principal as PrincipalId; // Explicit import
+use crate::services::payment_service; // Import payment_service
+
+// Constants for plan calculations
+const TEN_YEARS_IN_NANOS: u64 = 10 * 365 * 24 * 60 * 60 * 1_000_000_000; // Approx 10 years
+const E8S_PER_ICP: u64 = 100_000_000;
 
 // --- Vault Initialization Struct (Example - Define properly in models or api later) ---
 // This struct would typically come from the API layer (Phase 3)
@@ -37,6 +43,58 @@ pub struct VaultUpdateData {
     pub unlock_conditions: Option<UnlockConditions>,
     pub plan: Option<String>,
     // Add fields for updating other settings if needed
+}
+
+// --- Helper: Get Base Storage Price in ICP e8s --- 
+// Based on plans/backend.architecture.md#53-pricing-vs-10-year-cost-projection
+fn get_plan_base_price_e8s(plan: &str) -> Result<u64, VaultError> {
+    match plan {
+        "Basic" => Ok(3_500_000_00),     // 3.5 ICP
+        "Standard" => Ok(6_900_000_00),  // 6.9 ICP
+        "Premium" => Ok(30_000_000_00), // 30 ICP
+        "Deluxe" => Ok(61_000_000_00),  // 61 ICP
+        "Titan" => Ok(151_000_000_00), // 151 ICP
+        _ => Err(VaultError::InvalidInput(format!(
+            "Invalid plan specified for price calculation: {}",
+            plan
+        ))),
+    }
+}
+
+// --- Helper: Calculate Prorated Upgrade Cost ---
+/// Calculates the prorated cost for upgrading a vault plan.
+/// Returns the cost in e8s, or 0 if it's a downgrade or same plan.
+fn calculate_prorated_upgrade_cost(
+    current_config: &VaultConfig,
+    new_plan: &str,
+    current_time_ns: Timestamp,
+) -> Result<E8s, VaultError> {
+    // 1. Check if it's actually an upgrade (higher price)
+    let old_price_e8s = get_plan_base_price_e8s(&current_config.plan)?;
+    let new_price_e8s = get_plan_base_price_e8s(new_plan)?;
+
+    if new_price_e8s <= old_price_e8s {
+        return Ok(0); // Downgrade or same plan - no cost
+    }
+
+    // 2. Calculate remaining time factor
+    // Vault lifetime is 10 years from creation
+    let total_duration_ns = TEN_YEARS_IN_NANOS; 
+    let elapsed_time_ns = current_time_ns.saturating_sub(current_config.created_at);
+    let remaining_time_ns = total_duration_ns.saturating_sub(elapsed_time_ns);
+
+    // Prevent division by zero or negative time
+    if remaining_time_ns == 0 || total_duration_ns == 0 {
+        return Ok(0); // No time remaining, no upgrade cost
+    }
+
+    // 3. Calculate prorated cost difference
+    let price_difference_e8s = new_price_e8s - old_price_e8s;
+    
+    // Use u128 for intermediate calculation to avoid overflow
+    let prorated_cost_e8s = (price_difference_e8s as u128 * remaining_time_ns as u128 / total_duration_ns as u128) as u64;
+
+    Ok(prorated_cost_e8s)
 }
 
 // --- Service Functions ---
@@ -115,7 +173,8 @@ pub async fn get_vault_config(vault_id: &VaultId) -> Result<VaultConfig, VaultEr
 }
 
 /// Updates an existing vault's configuration.
-/// Only certain fields might be updatable depending on the state and permissions.
+/// If a plan upgrade requires payment, initiates a payment session and returns it.
+/// If it's a downgrade or non-plan update, applies changes directly.
 ///
 /// # Arguments
 /// * `vault_id` - The ID of the vault to update.
@@ -123,12 +182,12 @@ pub async fn get_vault_config(vault_id: &VaultId) -> Result<VaultConfig, VaultEr
 /// * `caller` - The principal attempting the update (for authorization checks).
 ///
 /// # Returns
-/// * `Result<(), VaultError>` - Success or an error.
+/// * `Result<Option<PaymentSession>, VaultError>` - PaymentSession if required, None otherwise, or an error.
 pub async fn update_vault_config(
     vault_id: &VaultId,
     update_data: VaultUpdateData,
     caller: PrincipalId,
-) -> Result<(), VaultError> {
+) -> Result<Option<PaymentSession>, VaultError> {
     // 1. Retrieve existing config using the helper
     let mut config = storage::vault_configs::get_vault_config(vault_id)
         .ok_or_else(|| VaultError::VaultNotFound(vault_id.clone().to_string()))?;
@@ -141,90 +200,157 @@ pub async fn update_vault_config(
         )));
     }
 
-    // --- Apply updates (logic remains the same) ---
-    let mut updated = false;
+    let current_time = time();
+    let mut needs_save = false;
+    let mut payment_session_needed: Option<PaymentSession> = None;
+
+    // --- Apply non-plan updates directly ---
     if let Some(name) = update_data.name {
         if config.name != name {
             config.name = name;
-            updated = true;
+            needs_save = true;
         }
     }
-    // Compare Option<String> with Option<String>
     if update_data.description != config.description {
-         config.description = update_data.description;
-         updated = true;
+        config.description = update_data.description;
+        needs_save = true;
     }
     if let Some(unlock_conditions) = update_data.unlock_conditions {
-        // Basic structure validation is handled by Candid types.
-        // Complex validation (e.g., thresholds vs member count) might go here if needed.
         if config.unlock_conditions != unlock_conditions {
             config.unlock_conditions = unlock_conditions;
-            updated = true;
+            needs_save = true;
         }
     }
+
+    // --- Handle Plan Change ---
     if let Some(new_plan) = update_data.plan {
         if config.plan != new_plan {
-            // TODO: Implement prorate calculation for plan change.
-            // This likely requires integration with payment_service to handle potential
-            // cost differences and payment verification before applying the change.
-            // For now, just update the plan name and quota as an example.
-            let new_storage_quota_bytes = match new_plan.as_str() {
-                "Basic" => 5 * 1024 * 1024,
-                "Standard" => 10 * 1024 * 1024,
-                "Premium" => 50 * 1024 * 1024,
-                "Deluxe" => 100 * 1024 * 1024,
-                "Titan" => 250 * 1024 * 1024,
-                _ => return Err(VaultError::InvalidInput("Invalid new plan specified".to_string())),
-            };
-            // Check if new quota is sufficient for current usage
-            if new_storage_quota_bytes < config.storage_used_bytes {
-                return Err(VaultError::StorageError("New plan quota is less than current usage.".to_string()));
+            // Calculate potential upgrade cost
+            let upgrade_cost_e8s = calculate_prorated_upgrade_cost(&config, &new_plan, current_time)?;
+
+            if upgrade_cost_e8s > 0 {
+                // --- Upgrade requires payment --- 
+                ic_cdk::print(format!(
+                    "INFO: Vault {} upgrade from {} to {} requires payment of {} e8s.",
+                    vault_id, config.plan, new_plan, upgrade_cost_e8s
+                ));
+
+                let payment_req = PaymentInitRequest {
+                    vault_plan: new_plan.clone(), // The target plan
+                    amount_e8s: upgrade_cost_e8s,
+                };
+                let purpose = PaymentPurpose::PlanUpgrade { new_plan: new_plan.clone() };
+
+                // Initiate payment session
+                let session = payment_service::initialize_payment_session(payment_req, caller, Some(purpose)).await?;
+                payment_session_needed = Some(session);
+                // DO NOT apply the plan change to config yet. It happens after payment verification.
+                needs_save = false; // No immediate save needed if payment is pending
+
+            } else {
+                // --- Downgrade or same plan - apply directly --- 
+                ic_cdk::print(format!(
+                    "INFO: Vault {} changing plan from {} to {} (downgrade/same). Applying directly.",
+                    vault_id, config.plan, new_plan
+                ));
+                let new_storage_quota_bytes = get_plan_quota_bytes(&new_plan)?;
+                
+                // Check if new quota is sufficient for current usage
+                if new_storage_quota_bytes < config.storage_used_bytes {
+                    return Err(VaultError::StorageError(
+                        "New plan quota is less than current usage.".to_string(),
+                    ));
+                }
+                config.plan = new_plan;
+                config.storage_quota_bytes = new_storage_quota_bytes;
+                needs_save = true; // Apply change now
             }
-            config.plan = new_plan;
-            config.storage_quota_bytes = new_storage_quota_bytes;
-            updated = true;
-            ic_cdk::print(format!("📝 INFO: Vault {} plan updated to {} by owner {}", vault_id, config.plan, caller));
         }
     }
-    // --- End Apply updates ---
 
-    // 4. If updated, update timestamp and save using the helper
-    if updated {
-        config.updated_at = time();
-        // Insert the updated config back using the helper function
+    // 4. If changes applied directly (no payment needed or non-plan changes), save.
+    if needs_save {
+        config.updated_at = current_time;
         match storage::vault_configs::insert_vault_config(&config) {
             Some(_) => {
-                // Insertion successful (updated existing)
-                 ic_cdk::print(format!("📝 INFO: Vault {} updated by owner {}", vault_id, caller));
-                 Ok(())
-             },
-             None => {
-                // Insertion successful (was new? should not happen in update)
-                ic_cdk::eprintln!("⚠️ WARNING: Vault {} config insertion reported None during update.", vault_id);
-                Ok(()) // Treat as success
-             }
-             // Note: insert_vault_config doesn't return Result, so no Err case here.
-             //       Error handling would need to be added to the storage function itself if needed.
-        }
-
-        /* // OLD Direct Access
-        storage::VAULT_CONFIGS.with(|map| {
-            let key = Cbor(vault_id.clone()); // OLD direct access
-            let mut borrowed_map = map.borrow_mut();
-            match borrowed_map.insert(key, Cbor(config)) { // Key type mismatch!
-                 Some(_) => {
-                     ic_cdk::print(format!("📝 INFO: Vault {} updated by owner {}", vault_id, caller));
-                     Ok(())
-                 },
-                 None => {
-                    // Should not happen if we just fetched it, but handle defensively
-                    Err(VaultError::StorageError("Failed to update vault config (vault disappeared?)".to_string()))
-                 },
+                ic_cdk::print(format!(
+                    "📝 INFO: Vault {} config updated by owner {}. Payment required: {}",
+                    vault_id, caller, payment_session_needed.is_some()
+                ));
             }
-        })
-        */
-    } else {
-        Ok(()) // No changes made
+            None => {
+                ic_cdk::eprintln!(
+                    "⚠️ WARNING: Vault {} config insertion reported None during update.",
+                    vault_id
+                );
+            }
+        }
+    }
+
+    // Return the payment session if one was created, otherwise None
+    Ok(payment_session_needed)
+}
+
+/// Helper to get quota bytes for a plan string.
+fn get_plan_quota_bytes(plan: &str) -> Result<u64, VaultError> {
+    match plan {
+        "Basic" => Ok(5 * 1024 * 1024),         // 5 MB
+        "Standard" => Ok(10 * 1024 * 1024),     // 10 MB
+        "Premium" => Ok(50 * 1024 * 1024),      // 50 MB
+        "Deluxe" => Ok(100 * 1024 * 1024),    // 100 MB
+        "Titan" => Ok(250 * 1024 * 1024),       // 250 MB
+        _ => Err(VaultError::InvalidInput(format!(
+            "Invalid plan specified for quota calculation: {}",
+            plan
+        ))),
+    }
+}
+
+/// Internal function to apply a plan change after successful payment verification.
+/// Should only be called by the payment service.
+pub async fn finalize_plan_change(vault_id: &VaultId, new_plan: String) -> Result<(), VaultError> {
+    ic_cdk::print(format!(
+        "INFO: Finalizing plan change for vault {} to {}",
+        vault_id, new_plan
+    ));
+    let mut config = storage::vault_configs::get_vault_config(vault_id)
+        .ok_or_else(|| VaultError::VaultNotFound(vault_id.clone().to_string()))?;
+
+    // Get new quota
+    let new_storage_quota_bytes = get_plan_quota_bytes(&new_plan)?;
+
+    // Check quota again (unlikely to change, but good practice)
+    if new_storage_quota_bytes < config.storage_used_bytes {
+        ic_cdk::eprintln!(
+            "ERROR: Cannot finalize plan change for vault {}. New quota {} is less than current usage {}.",
+            vault_id, new_storage_quota_bytes, config.storage_used_bytes
+        );
+        // Don't return error here? Payment already made. Log and maybe flag vault?
+        // For now, log the error but proceed with plan name change.
+        // return Err(VaultError::StorageError("New plan quota is less than current usage.".to_string()));
+    }
+
+    config.plan = new_plan.clone();
+    config.storage_quota_bytes = new_storage_quota_bytes;
+    config.updated_at = time();
+
+    match storage::vault_configs::insert_vault_config(&config) {
+        Some(_) => {
+            ic_cdk::print(format!(
+                "✅ SUCCESS: Vault {} plan finalized to {}.",
+                vault_id, new_plan
+            ));
+            Ok(())
+        }
+        None => {
+            ic_cdk::eprintln!(
+                "❌ ERROR: Failed to save finalized plan change for vault {} (config disappeared?).",
+                vault_id
+            );
+            Err(VaultError::StorageError(
+                "Failed to save finalized plan change.".to_string(),
+            ))
+        }
     }
 }
 

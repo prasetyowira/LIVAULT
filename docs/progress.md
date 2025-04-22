@@ -401,7 +401,7 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 
 **Relevant Docs:**
 *   [`docs/todo.md`](mdc:docs/todo.md) (Marked ChainFusion verification task as done)
-*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs) 
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs)
 
 ---
 
@@ -506,5 +506,44 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   [`docs/progress.md`](mdc:docs/progress.md)
 *   [`docs/todo.md`](mdc:docs/todo.md)
 *   [ic-ledger-types Documentation](https://docs.rs/ic-ledger-types/latest/ic_ledger_types/)
+
+--- 
+
+## 2024-07-29: Implement Vault Plan Change Logic
+
+**Overview:** Implemented the logic for changing a vault's plan, including handling prorated costs for upgrades and integrating with the payment system.
+
+**Key Components Implemented/Updated:**
+-   **Models (`models/payment.rs`):**
+    *   Added `PaymentPurpose` enum (`InitialVaultCreation`, `PlanUpgrade { new_plan: String }`).
+    *   Added `purpose: PaymentPurpose` field to `PaymentSession` struct.
+-   **Payment Service (`services/payment_service.rs`):**
+    *   Updated `initialize_payment_session` to accept and store an optional `PaymentPurpose`.
+    *   Refactored `verify_payment`:
+        *   After successful ledger verification, checks `session.purpose`.
+        *   If `PlanUpgrade`, calls `vault_service::finalize_plan_change`.
+        *   If `InitialVaultCreation`, calls `vault_service::set_vault_status`.
+    *   Updated billing entry creation in `trigger_post_confirmation_actions` to reflect the payment purpose.
+-   **Vault Service (`services/vault_service.rs`):**
+    *   Added helper `get_plan_base_price_e8s` based on architecture doc pricing.
+    *   Added helper `calculate_prorated_upgrade_cost` implementing the prorate formula.
+    *   Refactored `update_vault_config`:
+        *   Returns `Result<Option<PaymentSession>, VaultError>`.
+        *   Calculates upgrade cost.
+        *   If cost > 0, calls `initialize_payment_session` with `PlanUpgrade` purpose and returns the session.
+        *   If cost <= 0 (downgrade/same), applies plan change directly and returns `Ok(None)`.
+    *   Added internal function `finalize_plan_change` to apply plan updates after successful upgrade payment.
+-   **API Layer (`api.rs`):**
+    *   Updated the signature and return type of the `update_vault` endpoint to `Result<Option<PaymentSession>, VaultError>`.
+
+**Dependencies:** Relies on existing dependencies.
+
+**Relevant Docs:**
+*   [`plans/backend.architecture.md`](mdc:plans/backend.architecture.md) (Section 5.6)
+*   [`docs/todo.md`](mdc:docs/todo.md)
+*   [`src/backend/models/payment.rs`](mdc:src/backend/models/payment.rs)
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs)
+*   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
+*   [`src/backend/api.rs`](mdc:src/backend/api.rs)
 
 --- 

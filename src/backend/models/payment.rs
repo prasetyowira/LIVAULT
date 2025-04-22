@@ -26,8 +26,16 @@ pub enum PayState {
     Error,     // An error occurred during processing
 }
 
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+pub enum PaymentPurpose {
+    InitialVaultCreation,
+    PlanUpgrade { new_plan: String },
+    // Add other purposes as needed, e.g., VaultRenewal
+}
+
 impl Default for PayMethod { fn default() -> Self { PayMethod::IcpDirect } }
 impl Default for PayState { fn default() -> Self { PayState::Issued } }
+impl Default for PaymentPurpose { fn default() -> Self { PaymentPurpose::InitialVaultCreation } }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct PaymentSession {
@@ -38,6 +46,7 @@ pub struct PaymentSession {
     pub vault_plan: String,           // e.g., "Standard", "Premium"
     pub method: PayMethod,           // Always IcpDirect for MVP
     pub state: PayState,
+    pub purpose: PaymentPurpose,       // What is this payment for?
     pub initiating_principal: PrincipalId, // Who started the payment process
     pub created_at: Timestamp,          // Nanoseconds since epoch
     pub expires_at: Timestamp,          // Nanoseconds since epoch when the session expires

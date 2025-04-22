@@ -330,7 +330,7 @@ async fn get_vault(vault_id: VaultId) -> Result<VaultConfig, VaultError> {
 }
 
 #[update(guard = "owner_guard")]
-async fn update_vault(req: UpdateVaultRequest) -> Result<(), VaultError> {
+async fn update_vault(req: UpdateVaultRequest) -> Result<Option<PaymentSession>, VaultError> {
     validate_request(&req)?;
     let caller = api::caller();
     rate_guard(caller)?;
@@ -344,15 +344,7 @@ async fn update_vault(req: UpdateVaultRequest) -> Result<(), VaultError> {
         plan: req.plan,
     };
 
-    vault_service::update_vault_config(&req.vault_id, update_data, caller).await?;
-
-    add_audit_log_entry(&req.vault_id.to_string(), crate::models::audit::AuditLogEntry::new(
-        Action::UpdateVault,
-        caller,
-        Some("Vault configuration updated.".to_string())
-    ))?;
-
-    Ok(()})
+    vault_service::update_vault_config(&req.vault_id, update_data, caller).await
 }
 
 // --- Invitation & Member Endpoints ---

@@ -2,7 +2,7 @@
 use crate::{
     error::VaultError,
     models::{common::*, payment::*, billing::BillingEntry, common::VaultStatus},
-    models::payment::{store_payment_session, with_payment_session, with_payment_session_mut},
+    models::payment::{store_payment_session, with_payment_session, with_payment_session_mut, PaymentPurpose},
     utils::crypto::generate_unique_principal,
     services::vault_service,
     storage,
@@ -43,15 +43,18 @@ async fn derive_random_subaccount() -> Result<Subaccount, VaultError> {
 /// Initializes a new payment session.
 pub async fn initialize_payment_session(
     req: PaymentInitRequest,
-    caller: PrincipalId, 
+    caller: PrincipalId,
+    purpose: Option<PaymentPurpose>,
 ) -> Result<PaymentSession, VaultError> {
-    let session_id = generate_unique_principal().await?; 
+    let session_id = generate_unique_principal().await?;
     let current_time = time();
     let expires_at = current_time + Duration::from_secs(PAYMENT_SESSION_TIMEOUT_SECONDS).as_nanos() as u64;
 
     let vault_canister_principal = api::id();
     let subaccount = derive_random_subaccount().await?;
     let pay_to_account = AccountIdentifier::new(&vault_canister_principal, &subaccount);
+    
+    let session_purpose = purpose.unwrap_or_default();
 
     let session = PaymentSession {
         session_id: session_id.clone(),
@@ -61,6 +64,7 @@ pub async fn initialize_payment_session(
         vault_plan: req.vault_plan.clone(),
         method: PayMethod::IcpDirect,
         state: PayState::Issued,
+        purpose: session_purpose.clone(),
         initiating_principal: caller,
         created_at: current_time,
         expires_at,
@@ -73,8 +77,8 @@ pub async fn initialize_payment_session(
     store_payment_session(session.clone());
 
     ic_cdk::print(format!(
-        "📝 INFO: Payment session {} created for plan {} ({} e8s) by {}. Method: {:?}. Expires at {}. Pay to Account: {}",
-        session_id, session.vault_plan, session.amount_e8s, caller, session.method, session.expires_at, session.pay_to_account_id
+        "📝 INFO: Payment session {} created for plan {} ({}) by {}. Purpose: {:?}. Expires at {}. Pay to Account: {}",
+        session_id, session.vault_plan, session.amount_e8s, caller, session.purpose, session.expires_at, session.pay_to_account_id
     ));
 
     Ok(session)
@@ -130,8 +134,13 @@ pub async fn verify_payment(
             session.error_message = None;
             store_payment_session(session.clone());
 
-            // Trigger post-confirmation actions asynchronously
-            trigger_post_confirmation_actions(vault_id.clone(), session.session_id, confirmation_detail, session.amount_e8s, session.initiating_principal);
+            // Trigger post-confirmation actions based on purpose
+            trigger_post_confirmation_actions(
+                vault_id.clone(),
+                session.clone(), // Pass the whole session for context
+                confirmation_detail.clone(),
+            )
+            .await?; // Await the result
 
             Ok(format!("Payment Confirmed ({})", session.ledger_tx_hash.unwrap_or_default()))
         }
@@ -146,46 +155,111 @@ pub async fn verify_payment(
 }
 
 /// Spawns async tasks for post-payment confirmation actions (update vault, add billing).
-fn trigger_post_confirmation_actions(
+async fn trigger_post_confirmation_actions(
     vault_id: VaultId,
-    session_id: PrincipalId,
+    session: PaymentSession, // Use the confirmed session
     confirmation_detail: String,
-    amount_e8s: E8s,
-    initiating_principal: PrincipalId
-) {
-    let vault_id_clone = vault_id.clone();
-    let session_id_clone = session_id.clone();
-    // Update Vault Status Task
-    ic_cdk::spawn(async move {
-        ic_cdk::print(format!("INFO: Attempting to update vault {} status to NeedSetup...", vault_id_clone));
-        match vault_service::set_vault_status(&vault_id_clone, VaultStatus::NeedSetup, Some(session_id_clone)).await {
-            Ok(_) => ic_cdk::print("INFO: Vault status updated successfully.".to_string()),
-            Err(e) => ic_cdk::eprintln!("ERROR: Failed to update vault status for {}: {:?}. Payment session {} remains Confirmed.", vault_id_clone, e, session_id_clone),
-        }
-    });
+) -> Result<(), VaultError> { // Return result to handle errors
+    ic_cdk::print(format!(
+        "INFO: Triggering post-confirmation actions for vault {} based on payment purpose {:?}",
+        vault_id, session.purpose
+    ));
 
-    // Add Billing Entry Task
-    ic_cdk::spawn(async move {
-        ic_cdk::print(format!("INFO: Adding billing entry for vault {}...", vault_id));
+    let vault_id_clone = vault_id.clone(); // Clone for billing task
+    let session_id_clone = session.session_id.clone(); // Clone for billing task
+    let amount_e8s_clone = session.amount_e8s; // Clone for billing task
+    let confirmation_detail_clone = confirmation_detail.clone(); // Clone for billing task
+    let initiating_principal_clone = session.initiating_principal; // Clone for billing task
+
+    // 1. Handle Vault State/Plan Update based on Purpose
+    let vault_update_future = async {
+        match session.purpose {
+            PaymentPurpose::InitialVaultCreation => {
+                ic_cdk::print(format!(
+                    "INFO: Attempting to update vault {} status to NeedSetup...",
+                    vault_id
+                ));
+                vault_service::set_vault_status(
+                    &vault_id,
+                    VaultStatus::NeedSetup,
+                    Some(session.session_id),
+                )
+                .await
+            }
+            PaymentPurpose::PlanUpgrade { new_plan } => {
+                ic_cdk::print(format!(
+                    "INFO: Attempting to finalize plan change for vault {} to {}",
+                    vault_id, new_plan
+                ));
+                vault_service::finalize_plan_change(&vault_id, new_plan).await
+            }
+        }
+    };
+
+    // 2. Add Billing Entry Task (Run concurrently)
+    let billing_future = async move {
+        ic_cdk::print(format!("INFO: Adding billing entry for vault {}...", vault_id_clone));
         let billing_entry = BillingEntry {
             date: time(),
-            vault_id: vault_id.to_string(),
-            tx_type: "Vault Creation".to_string(),
-            amount_icp_e8s: amount_e8s,
+            vault_id: vault_id_clone.to_string(),
+            tx_type: match session.purpose {
+                PaymentPurpose::InitialVaultCreation => "Vault Creation".to_string(),
+                PaymentPurpose::PlanUpgrade { ref new_plan } => format!("Plan Upgrade to {}", new_plan),
+            },
+            amount_icp_e8s: amount_e8s_clone,
             payment_method: format!("{:?}", PayMethod::IcpDirect),
-            ledger_tx_hash: Some(confirmation_detail),
-            related_principal: Some(initiating_principal),
+            ledger_tx_hash: Some(confirmation_detail_clone),
+            related_principal: Some(initiating_principal_clone),
         };
-        match storage::billing::add_billing_entry(billing_entry) {
-            Ok(log_index) => ic_cdk::print(format!("INFO: Billing entry added at index {}.", log_index)),
-            Err(e) => ic_cdk::eprintln!("ERROR: Failed to add billing entry for vault {}: {}. Payment session {} remains Confirmed.", vault_id, e, session_id),
-        }
-    });
+        storage::billing::add_billing_entry(billing_entry)
+            .map(|log_index| {
+                ic_cdk::print(format!("INFO: Billing entry added at index {}.", log_index));
+                Ok(())
+            })
+            .map_err(|e| {
+                ic_cdk::eprintln!(
+                    "ERROR: Failed to add billing entry for vault {}: {}. Payment session {} remains Confirmed.",
+                    vault_id_clone, e, session_id_clone
+                );
+                VaultError::StorageError(format!("Failed to add billing entry: {}", e))
+            })
+    };
+
+    // Execute both futures concurrently and collect results
+    let (vault_result, billing_result) = futures::join!(vault_update_future, billing_future);
+
+    // Check for errors and potentially revert or flag
+    if let Err(e) = vault_result {
+        ic_cdk::eprintln!(
+            "CRITICAL ERROR: Failed vault post-confirmation action for vault {} (payment {}): {:?}. Billing result: {:?}",
+            vault_id, session.session_id, e, billing_result
+        );
+        // Decide on error handling: Revert payment state? Flag vault? Log critical?
+        // For now, log critical error. Payment is Confirmed, but vault state is inconsistent.
+        return Err(e); // Propagate the vault error
+    }
+    if let Err(e) = billing_result {
+         ic_cdk::eprintln!(
+            "ERROR: Failed billing post-confirmation action for vault {} (payment {}): {:?}. Vault action succeeded.",
+            vault_id, session.session_id, e
+        );
+        // Don't return error here, as the core vault action succeeded, but log it.
+    }
+
+    ic_cdk::print(format!("INFO: Post-confirmation actions completed for vault {}.", vault_id));
+    Ok(())
 }
 
 /// Verifies ICP payment by querying ledger blocks.
-async fn verify_icp_ledger_payment(session: &PaymentSession, block_index_opt: Option<u64>) -> Result<String, VaultError> {
-    ic_cdk::print(format!("INFO: Verifying ICP ledger payment for session {}. Checking block: {:?}", session.session_id, block_index_opt));
+async fn verify_icp_ledger_payment(
+    session: &PaymentSession,
+    block_index_opt: Option<u64>,
+) -> Result<String, VaultError> {
+    ic_cdk::print(format!(
+        "INFO: Verifying ICP ledger payment for session {}. Checking block: {:?}",
+        session.session_id,
+        block_index_opt
+    ));
 
     let ledger_canister_id = Principal::from_text(ICP_LEDGER_CANISTER_ID_STR)
         .map_err(|_| VaultError::InternalError("Invalid ICP Ledger Canister ID configured".to_string()))?;
@@ -197,20 +271,30 @@ async fn verify_icp_ledger_payment(session: &PaymentSession, block_index_opt: Op
         GetBlocksArgs { start: index, length: 1 }
     } else {
         ic_cdk::print("WARN: No specific block index provided for verification.");
-        return Err(VaultError::PaymentError("Block index required for efficient verification.".to_string()));
+        return Err(VaultError::PaymentError(
+            "Block index required for efficient verification.".to_string(),
+        ));
         // Removed fallback logic - require block index for verification
     };
 
     ic_cdk::print(format!("INFO: Querying ledger block {}", query_args.start));
 
-    let blocks_result: Result<(QueryBlocksResponse,), _> = ic_cdk::call(ledger_canister_id, "query_blocks", (query_args.clone(),)).await;
+    let blocks_result: Result<(QueryBlocksResponse,), _> =
+        ic_cdk::call(ledger_canister_id, "query_blocks", (query_args.clone(),)).await;
 
     match blocks_result {
         Ok((response,)) => {
-            ic_cdk::print(format!("INFO: Received {} blocks starting from index {}.", response.blocks.len(), response.first_block_index));
+            ic_cdk::print(format!(
+                "INFO: Received {} blocks starting from index {}.",
+                response.blocks.len(),
+                response.first_block_index
+            ));
 
             if response.blocks.is_empty() {
-                return Err(VaultError::PaymentError(format!("Ledger query returned no block for index {}.", query_args.start)));
+                return Err(VaultError::PaymentError(format!(
+                    "Ledger query returned no block for index {}.",
+                    query_args.start
+                )));
             }
 
             let block = response.blocks.first().unwrap(); // Safe unwrap due to is_empty check
@@ -222,22 +306,38 @@ async fn verify_icp_ledger_payment(session: &PaymentSession, block_index_opt: Op
                     && tx_timestamp_nanos >= session.created_at
                     && tx_timestamp_nanos <= session.expires_at
                 {
-                    ic_cdk::print(format!("✅ Found matching transaction in block {}: amount={}e8s", query_args.start, amount.e8s()));
+                    ic_cdk::print(format!(
+                        "✅ Found matching transaction in block {}: amount={}e8s",
+                        query_args.start,
+                        amount.e8s()
+                    ));
                     let confirmation_detail = format!("block_{}", query_args.start);
                     return Ok(confirmation_detail);
                 } else {
-                    ic_cdk::print(format!("DEBUG: Transfer in block {} did not match session criteria (to={}, amount={}, time={}, session_expires={}).", 
-                        query_args.start, to, amount.e8s(), tx_timestamp_nanos, session.expires_at));
+                    ic_cdk::print(format!(
+                        "DEBUG: Transfer in block {} did not match session criteria (to={}, amount={}, time={}, session_created={}, session_expires={}).", 
+                        query_args.start, to, amount.e8s(), tx_timestamp_nanos, session.created_at, session.expires_at));
                 }
             } else {
-                ic_cdk::print(format!("DEBUG: Block {} does not contain a Transfer operation.", query_args.start));
+                ic_cdk::print(format!(
+                    "DEBUG: Block {} does not contain a Transfer operation.",
+                    query_args.start
+                ));
             }
 
-            Err(VaultError::PaymentError("Payment transaction not found in specified block or did not match criteria.".to_string()))
+            Err(VaultError::PaymentError(
+                "Payment transaction not found in specified block or did not match criteria.".to_string(),
+            ))
         }
         Err((code, msg)) => {
-            ic_cdk::eprintln!("ERROR: Failed to query block {} from ICP ledger ({:?}): {}", query_args.start, code, msg);
-            Err(VaultError::PaymentError(format!("Ledger query_blocks failed: {}", msg)))
+            ic_cdk::eprintln!(
+                "ERROR: Failed to query block {} from ICP ledger ({:?}): {}",
+                query_args.start, code, msg
+            );
+            Err(VaultError::PaymentError(format!(
+                "Ledger query_blocks failed: {}",
+                msg
+            )))
         }
     }
 }
@@ -247,7 +347,7 @@ pub fn close_payment_session(session_id: &PrincipalId) -> Result<(), VaultError>
     let current_time = time();
     with_payment_session_mut(session_id, |session| {
         match session.state {
-            PayState::Confirmed | PayState::Expired | PayState::Error => { // Allow closing Error state too
+            PayState::Confirmed | PayState::Expired | PayState::Error => {
                 session.state = PayState::Closed;
                 session.closed_at = Some(current_time);
                 ic_cdk::print(format!("INFO: Payment session {} closed.", session_id));
@@ -275,6 +375,7 @@ pub async fn list_billing_entries(offset: usize, limit: usize) -> Result<(Vec<Bi
 pub struct PaymentSessionStatus {
    pub session_id: PrincipalId,
    pub state: PayState,
+   pub purpose: PaymentPurpose,
    pub error_message: Option<String>,
    pub verified_at: Option<Timestamp>,
    pub closed_at: Option<Timestamp>,
@@ -286,6 +387,7 @@ pub fn get_payment_session_status(session_id: &PrincipalId) -> Result<PaymentSes
        Ok(PaymentSessionStatus {
            session_id: session.session_id.clone(),
            state: session.state,
+           purpose: session.purpose.clone(),
            error_message: session.error_message.clone(),
            verified_at: session.verified_at,
            closed_at: session.closed_at,

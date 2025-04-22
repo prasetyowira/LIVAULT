@@ -80,7 +80,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/vault_service.rs`: **[X]** Calculate `expires_at` based on plan (e.g., 10 years).
     *   `services/vault_service.rs`: **[X]** Determine `storage_quota_bytes` based on plan.
     *   `services/vault_service.rs`: **[X]** Add logic to update unlock conditions. (TODO removed)
-    *   `services/vault_service.rs`: Implement plan change logic (handle prorate calculation - Requires payment service integration).
+    *   `services/vault_service.rs`: **[X]** Implement plan change logic (handle prorate calculation - Requires payment service integration).
     *   `services/vault_service.rs`: **[X]** Implement robust state transition validation (based on PRD).
     *   `services/vault_service.rs`: **[X]** Add functions for vault deletion (cleanup members, content - Requires further impl).
     *   `services/vault_service.rs`: **[X]** Add functions to get vaults by owner (needs indexing/iteration - Added note).
