@@ -21,7 +21,7 @@ thread_local! {
 
 /// Inserts or updates a vault member.
 pub fn insert_member(member: &VaultMember) -> Option<VaultMember> {
-    let key = (member.vault_id, member.principal);
+    let key = (member.vault_id, member.member_id);
     let storable_member = Cbor(member.clone()); // Clone member for insertion
 
     MEMBERS.with(|map_ref| {
@@ -71,7 +71,7 @@ pub fn get_vaults_by_member(member_principal: PrincipalId) -> Vec<VaultConfig> {
         let map = map_ref.borrow();
         for (_key, value) in map.iter() {
             let member: VaultMember = value.0;
-            if member.principal == member_principal {
+            if member.member_id == member_principal {
                 vault_ids.insert(member.vault_id);
             }
         }

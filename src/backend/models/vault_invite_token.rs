@@ -19,6 +19,13 @@ impl Default for TokenStatus {
 }
 
 #[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
+pub struct VaultInviteRequest {
+    pub name: String,
+    pub relation: Option<String>,
+    pub email: String,
+}
+
+#[derive(CandidType, Serialize, Deserialize, Clone, Debug)]
 pub struct VaultInviteToken {
     // Internal ID, used as primary key in storage, NOT exposed in API directly
     #[serde(skip_serializing)] // Skip serialization if never needed externally
@@ -27,6 +34,9 @@ pub struct VaultInviteToken {
     // Exposed ID (Principal), used in API - Type alias resolves to Principal
     pub token_id: InviteTokenId,
     pub vault_id: VaultId, // Now Principal
+    pub name: String,
+    pub relation: Option<String>,
+    pub email: String,
     pub role: Role,
     pub status: TokenStatus,
     pub created_at: Timestamp,
@@ -44,6 +54,9 @@ impl Default for VaultInviteToken {
             internal_id: 0,
             token_id: InviteTokenId::anonymous(),
             vault_id: VaultId::anonymous(),
+            name: String::new(),
+            relation: Some(String::new()),
+            email: String::new(),
             role: Role::Heir,
             status: TokenStatus::Issued,
             created_at: 0,

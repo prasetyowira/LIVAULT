@@ -3,7 +3,7 @@ use crate::models::common::{MemberId, MemberStatus, PrincipalId, Role, Timestamp
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
 
-#[derive(CandidType, Deserialize, Serialize, Clone, Debug, Default)]
+#[derive(CandidType, Deserialize, Serialize, Clone, Debug)]
 pub struct AccessControl {
     pub last_accessed_at: Option<Timestamp>,
     pub download_limit_per_day: u8, // e.g., 3 as per PRD
@@ -18,11 +18,11 @@ pub struct VaultMember {
 
     pub member_id: MemberId,
     pub vault_id: VaultId,
-    pub principal: PrincipalId,
     pub role: Role,
     pub status: MemberStatus,
     pub name: Option<String>,      // Set during invite claim
     pub relation: Option<String>,  // Set during invite claim
+    pub email: Option<String>,  // Set during invite claim
     pub shamir_share_index: u8,    // Assigned during invite generation (1-255)
     pub added_at: Timestamp,
     pub updated_at: Timestamp,
@@ -50,11 +50,11 @@ impl Default for VaultMember {
             internal_id: None,
             member_id: Principal::anonymous(),
             vault_id: Principal::anonymous(),
-            principal: Principal::anonymous(),
             role: Role::Heir,
             status: MemberStatus::Pending,
             name: None,
             relation: None,
+            email: None,
             shamir_share_index: 0, // Should be assigned properly
             added_at: 0,
             updated_at: 0,
@@ -65,6 +65,17 @@ impl Default for VaultMember {
                 last_download_day_index: 0,
             },
             has_approved_unlock: false,
+        }
+    }
+}
+
+impl Default for AccessControl {
+    fn default() -> Self {
+        Self {
+            last_accessed_at: None,
+            download_limit_per_day: 3,
+            daily_downloads_count: 0,
+            last_download_day_index: 0,
         }
     }
 }

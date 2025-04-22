@@ -60,14 +60,14 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] API Configuration:** Configure `ADMIN_PRINCIPAL`, `CRON_CALLER` in `api.rs` (load from init/storage).
 -   **[ ] API Endpoints:** Implement `request_download` endpoint in `api.rs`.
 -   **[ ] API Authorization:** Review and apply specific member/role guards in `api.rs` where needed (beyond owner/admin).
--   **[ ] `InviteService` Implementation:**
-    *   Check vault state allows invites.
-    *   **Refine Shamir secret handling (replace placeholder generation).** -> **Placeholder noted in plan.**
-    *   **Refine Shamir parameter `n` (total shares) based on vault plan/config.** -> **Planned.**
-    *   Add function to revoke an invite token. -> **Planned.**
-    *   Add function to list members for a vault. -> **Planned.**
-    *   Add function to get member details. -> **Planned.**
-    *   Add logic based on `finalize_setup` requirements from arch doc (if applicable).
+-   **[~] `InviteService` Implementation:** -> **Implemented based on plan, pending `get_vault_secret_for_sharing_bytes` implementation.**
+    *   Check vault state allows invites. -> **Done.**
+    *   **Refine Shamir secret handling (replace placeholder generation).** -> **Placeholder function exists.**
+    *   **Refine Shamir parameter `n` (total shares) based on vault plan/config.** -> **Done (reads from config).**
+    *   Add function to revoke an invite token. -> **Done.**
+    *   Add function to list members for a vault. -> **Done.**
+    *   Add function to get member details. -> **Done.**
+    *   Add logic based on `finalize_setup` requirements from arch doc (if applicable). -> **Deferred (Post-claim actions noted as outside scope).**
 -   **[!] `UploadService` Implementation:**
     *   **Refactor to use `storage::uploads` for chunk storage instead of in-memory `HashMap`.**
     *   Store initiator `Principal` in `UploadSession` for auth checks.
