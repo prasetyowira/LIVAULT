@@ -53,7 +53,7 @@
 | # | Task | Deliverables | Notes |
 |---|------|--------------|-------|
 | 2.1 | `VaultService` – CRUD + lifecycle validation | `services/vault_service.rs` | Pure functions, no IC API calls |
-| 2.2 | `InviteService` – token generation, Shamir index scheduler | `services/invite_service.rs` | Use `rand` + `ic_cdk::api::management_canister::main::raw_rand` |
+| 2.2 | `InviteService` – token generation, Shamir index scheduler | `services/invite_service.rs` | Use `sharks` + `rand_chacha` + `ic_cdk::api::management_canister::main::raw_rand` |
 | 2.3 | `UploadService` – chunked staging, checksum verify | `services/upload_service.rs` | Max 512 KB per chunk; staged in memory then moved |
 | 2.4 | `SchedulerService` – maintenance hooks | `services/scheduler.rs` | Will be called by CF Worker + `ic_cdk_timers` (interval) |
 | 2.5 | Manual edge‑case testing of services | Test checklist document | Execute via `dfx canister call` scripts |

@@ -12,7 +12,7 @@
 | Language | Rust 2024 (async/await, trait-driven) |
 | Target | `wasm32-unknown-unknown` (compiled via `cargo +nightly build --release`) |
 | Frameworks | None (custom IC canister logic) |
-| Crypto | `aes-gcm`, `sha2`, `rand`, `vsss-rs` |
+| Crypto | `aes-gcm`, `sha2`, `rand`, `sharks`, `rand_chacha` |
 | Stable Memory | `ic-stable-structures`, `serde_cbor` |
 | Testing | `cargo test`, `dfx` local testing |
 
@@ -206,7 +206,7 @@ fn check_download_quota(member: &mut VaultMember) -> Result<()> {
 | Purpose | Algorithm |
 |---------|-----------|
 | Vault content | AES‑256‑GCM (client‑side) |
-| Key shares | Shamir Secret Sharing (threshold configurable) |
+| Key shares | Shamir Secret Sharing (threshold configurable, using `sharks`) |
 | Transport auth | WebAuthn (FIDO2) challenge signed by device TEE |
 | Recovery QR | SHA‑256 hash of share + vault_id, encoded as QR |
 

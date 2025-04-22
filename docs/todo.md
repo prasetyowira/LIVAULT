@@ -17,7 +17,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[X] `VaultService`:** Implement function to be called by `PaymentService` to update vault status post-payment.
 -   **[X] `InviteService`:** Implement Shamir index assignment logic (fetching used indices).
 -   **[X] `InviteService`:** Implement calculation of token expiry dates accurately.
--   **[X] `InviteService`:** Implement Shamir secret sharing using `vsss-rs`. (**Note:** Uses placeholder secret generation, needs update).
+-   **[X] `InviteService`:** Implement Shamir secret sharing using `vsss-rs`. (**Note:** Uses placeholder secret generation, needs update -> **Plan outlined in comments, placeholders noted**).
 -   **[!] `UploadService`:** Consider moving upload staging from in-memory `HashMap` to stable memory. (**CRITICAL:** Service still uses in-memory map; `storage::uploads` has stable chunk storage but is unused by service).
 -   **[ ] `SchedulerService`:** Implement the actual logic within `purge_expired_invites`, `check_vault_lifecycles`, `cleanup_stale_uploads`, `compact_audit_logs`.
 -   **[ ] `SchedulerService`:** Implement efficient iteration methods for scheduler tasks over stable storage.
@@ -62,11 +62,11 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 -   **[ ] API Authorization:** Review and apply specific member/role guards in `api.rs` where needed (beyond owner/admin).
 -   **[ ] `InviteService` Implementation:**
     *   Check vault state allows invites.
-    *   **Refine Shamir secret handling (replace placeholder generation).**
-    *   **Refine Shamir parameter `n` (total shares) based on vault plan/config.**
-    *   Add function to revoke an invite token.
-    *   Add function to list members for a vault.
-    *   Add function to get member details.
+    *   **Refine Shamir secret handling (replace placeholder generation).** -> **Placeholder noted in plan.**
+    *   **Refine Shamir parameter `n` (total shares) based on vault plan/config.** -> **Planned.**
+    *   Add function to revoke an invite token. -> **Planned.**
+    *   Add function to list members for a vault. -> **Planned.**
+    *   Add function to get member details. -> **Planned.**
     *   Add logic based on `finalize_setup` requirements from arch doc (if applicable).
 -   **[!] `UploadService` Implementation:**
     *   **Refactor to use `storage::uploads` for chunk storage instead of in-memory `HashMap`.**

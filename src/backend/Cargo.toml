@@ -29,9 +29,8 @@ rand = "0.8.5"
 getrandom = { version = "0.2", features = ["custom"] }
 futures = "0.3.30"
 num = { version = "0.4", features = ["serde"] }
-rand_core = { version = "0.6", default-features = false, features = ["getrandom"] }
-elliptic-curve = { version = "0.13", default-features = false, features = ["sec1"] }
-p256 = { version = "0.13", default-features = false, features = ["ecdsa-core", "expose-field"] }
+sharks = { version = "0.5", default-features = false }
+rand_chacha = { version = "0.9.0", default-features = false }
 
 [dev-dependencies]
 # Add testing dependencies later if needed

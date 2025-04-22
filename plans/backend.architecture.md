@@ -255,7 +255,7 @@ pub fn token_principal_index_key(token_principal_bytes: &[u8]) -> Vec<u8> {
 | create_vault           | 1      | 2 × 10⁹          | 0.002     |
 | Upload (20 chunks)     | 60     | 120 × 10⁹        | 0.12      |
 | Invite ops (3+1)       | 4      | 8 × 10⁹          | 0.008     |
-| Heir approval + unlock | 5      | 10 × 10⁹         | 0.01      |
+| Heir approval + unlock | 5      | 10 × 10⁹         | 0.01       |
 | **Total one‑off**      | **72** | **144 × 10⁹**    | **0.144** |
 
 > Upload and verification dominate compute costs; content quota is enforced per plan.
@@ -590,7 +590,7 @@ Edge‑cases checked: duplicate tx reuse, partial amount, wrong principal.
            ↓ encrypt payload
        Ciphertext  ──▶ upload_chunk()/finish_upload()
            ↓ split k via Shamir (t/n configurable)
-       Share_i  ──▶ delivered to heir/witness (QR or file)
+       Share_i (using `sharks`) ──▶ delivered to heir/witness (QR or file)
 ```
 * AES key never leaves browser unencrypted.
 * Shamir share indices randomised with `ic_cdk::api::management_canister::main::raw_rand()` ensuring unbiased randomness.
@@ -603,7 +603,7 @@ let idx = loop {
     if !used.contains(&i) && i != 0 { break i; }
 };
 ```
-Avoids 0 (reserved) and guarantees no reuse.
++Avoids 0 (shares library is 1-based) and guarantees no reuse.
 
 ### 9.3 Cipher Suite Versioning
 ```

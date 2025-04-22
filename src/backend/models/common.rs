@@ -1,6 +1,7 @@
 // src/backend/models/common.rs
 use candid::{CandidType, Principal};
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 // Define ID types using Principal where appropriate
 pub type VaultId = Principal;        // Unique identifier for a vault
@@ -11,6 +12,11 @@ pub type UploadId = Principal;       // Exposed unique ID for an upload session
 pub type PrincipalId = Principal;    // General Principal identifier (can keep for clarity or remove if redundant)
 
 pub type Timestamp = u64; // Epoch seconds
+pub type TimestampNs = u64; // Nanoseconds since epoch
+pub type StorageBytes = u64;
+pub type Cycles = u128;
+pub type InternalId = u64; // Internal counter/ID for storage
+pub type ShamirShareIndex = u8; // 1-based index for Shamir shares
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum VaultStatus {
@@ -54,4 +60,6 @@ pub enum MemberStatus {
     Verified, // Member confirmed/verified (e.g., after claiming invite)
     Active,
     Revoked, // Access revoked by master
-} 
+}
+
+// TODO: Define specific storage plan tiers if needed 
