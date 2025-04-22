@@ -14,14 +14,14 @@ pub type E8s = u64; // Amount in 10^-8 ICP
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum PayMethod {
     IcpDirect,
-    ChainFusion, // Deferred implementation
+    // ChainFusion, // Deferred implementation - REMOVED FOR MVP
 }
 
 #[derive(CandidType, Deserialize, Serialize, Clone, Debug, PartialEq, Eq, Copy)]
 pub enum PayState {
     Issued,    // Session created, waiting for payment
-    Pending,   // Payment detected (e.g., CF swap processing), waiting for confirmation
-    Confirmed, // Payment verified on ledger/CF
+    Pending,   // Payment detected (e.g., CF swap processing), waiting for confirmation - REPURPOSED: Use for ICP ledger check pending
+    Confirmed, // Payment verified on ledger
     Closed,    // Vault created successfully after confirmation
     Expired,   // Session timed out before confirmation
     Error,     // An error occurred during processing
@@ -47,10 +47,11 @@ pub struct PaymentSession {
     pub error_message: Option<String>,     // Details if state is Error
     pub ledger_tx_hash: Option<String>,     // ICP ledger transaction hash if confirmed
 
-    // ChainFusion specific fields
+    /* // ChainFusion specific fields - REMOVED FOR MVP
     pub chainfusion_swap_address: Option<String>, // e.g., ETH address user needs to send to
     pub chainfusion_source_token: Option<String>, // e.g., "ETH", "USDT"
     pub chainfusion_source_amount: Option<String>, // Estimated amount in source token (string for precision)
+    */
 }
 
 impl PaymentSession {
@@ -75,10 +76,11 @@ impl Storable for PaymentSession {
 
     // Estimate max size: ULID (26) + AccountID (64) + E8s (8) + Plan (30) +
     // Method/State (~10) + Principal (29) + Timestamps (3*8=24) +
-    // Error (~100) + Hashes (2*66=132) + CF fields (~100 + 10 + 20 = 130)
-    // ~ 553 bytes. Round up generously.
+    // Error (~100) + Hash (66)
+    // Removed CF fields (~130)
+    // ~ 421 bytes. Round up generously.
     // Increased max_size for subaccount
-    const BOUND: Bound = Bound::Bounded { max_size: 640, is_fixed_size: false };
+    const BOUND: Bound = Bound::Bounded { max_size: 512, is_fixed_size: false }; // Reduced size after removing CF fields
 }
 
 // --- In-Memory Store for Payment Sessions ---

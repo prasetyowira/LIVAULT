@@ -36,7 +36,9 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
 
 ## Phase 4: Payment Adapter - Partially Completed (Phase 7 extended)
 -   **[ ] Task 4.3:** Perform manual end-to-end testing of the ICP Direct payment flow stub.
--   **[ ] Ledger Interaction:** Implement actual ICP ledger query logic in `verify_icp_ledger_payment` using appropriate crates/methods (replace placeholder).
+-   **[X] Ledger Interaction:** Implement actual ICP ledger query logic in `verify_icp_ledger_payment` using appropriate crates/methods (replace placeholder).
+-   **[X] Refactor Payment Verification:** Change `verify_icp_ledger_payment` to use `query_blocks` instead of `account_balance` for robust verification, based on ICP ledger documentation review (2024-07-28).
+-   **[X] Use ic-ledger-types:** Refactored `verify_icp_ledger_payment` to use standard types from `ic-ledger-types` crate (2024-07-28).
 -   **[ ] Pay-to Principal:** Implement secure derivation of a unique subaccount/principal per payment session in `initialize_payment_session` (replace placeholder using `caller`).
 
 ## Phase 5: Security & Guards - COMPLETED (2024-07-25)
@@ -114,7 +116,8 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/payment_service.rs`: **[X]** Generate a unique temporary principal/subaccount for ICP payments.
     *   `services/payment_service.rs`: **[X]** Add function to close/finalize payment session.
     *   `services/payment_service.rs`: **[X]** Refine ICP ledger verification (implemented balance check).
-    *   `services/payment_service.rs`: **[X]** Add function to handle ChainFusion payments (initiate swap, verify completion - uses balance check).
+    *   `services/payment_service.rs`: **[X]** Refactor `verify_icp_ledger_payment` to use `query_blocks` instead of `account_balance`.
+    *   `services/payment_service.rs`: **[X]** Refactor `verify_icp_ledger_payment` to use `ic-ledger-types`.
     *   `services/payment_service.rs`: **[X]** Add function to get payment session status.
     *   `services/payment_service.rs`: **[X]** Implement actual billing log query (e.g., get history).
     *   `storage/mod.rs`: **[x]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).

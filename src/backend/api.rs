@@ -269,10 +269,13 @@ async fn init_payment(req: ApiPaymentInitRequest) -> Result<PaymentSession, Vaul
 
 #[derive(CandidType, Deserialize, Clone, Debug, Validate)]
 pub struct VerifyPaymentRequest {
-    #[validate(length(min = 1))]
+    #[validate(custom = "validate_principal")] // Assuming SessionId is Principal
     pub session_id: SessionId,
     #[validate(custom = "validate_principal")]
     pub vault_id: VaultId,
+    // Add the block index received from the frontend ledger transfer result
+    #[validate(range(min = 0))] // Block index must be non-negative
+    pub block_index: Option<u64>,
 }
 
 #[update] // Verification likely updates vault/session state
@@ -281,8 +284,9 @@ async fn verify_payment(req: VerifyPaymentRequest) -> Result<String, VaultError>
     let caller = api::caller();
     rate_guard(caller)?;
     check_cycles()?;
-    let result = payment_service::verify_payment(&req.session_id, &req.vault_id).await;
-    Ok(format!("Payment Verified: {}", result))
+    // Pass the block_index to the service layer
+    payment_service::verify_payment(&req.session_id, &req.vault_id, req.block_index).await
+    // Removed Ok(format!(...)) wrapper, let service return the final string
 }
 
 // Query: Get Payment Session Status

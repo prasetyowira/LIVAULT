@@ -434,4 +434,77 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 **Relevant Docs:**
 *   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
 
+---
+
+## 2024-07-28: Remove ChainFusion for MVP Focus
+
+**Overview:** Removed ChainFusion-related code from the backend to align with the MVP scope, which only includes direct ICP payments.
+
+**Key Components Implemented/Updated:**
+-   **Models (`models/payment.rs`, `models/billing.rs`):**
+    *   Removed `PayMethod::ChainFusion` enum variant.
+    *   Removed ChainFusion-specific fields from `PaymentSession` struct (e.g., `chainfusion_swap_address`, `chainfusion_source_token`, `chainfusion_source_amount`). Updated `Storable` bound accordingly.
+    *   Removed ChainFusion-specific fields from `BillingEntry` struct (e.g., `original_token`, `original_amount`, `swap_tx_hash`). Updated `payment_method` to always be "IcpDirect".
+-   **Payment Service (`services/payment_service.rs`):**
+    *   Removed logic handling `PayMethod::ChainFusion` during `initialize_payment_session`.
+    *   Removed the `verify_chainfusion_payment` function.
+    *   Simplified `verify_payment` logic to only call `verify_icp_ledger_payment`.
+    *   Removed ChainFusion fields from `BillingEntry` creation.
+    *   Removed imports related to `chainfusion_adapter`.
+-   **ChainFusion Adapter (`adapter/chainfusion_adapter.rs`):**
+    *   Deleted the entire file as it is no longer needed.
+-   **Payment Init Request (`services/payment_service.rs`):**
+    *   Removed the `method` field from `PaymentInitRequest` as it's implicitly `IcpDirect`.
+
+**Dependencies:** Removed dependency on `chainfusion_adapter`.
+
+**Relevant Docs:**
+*   [`src/backend/models/payment.rs`](mdc:src/backend/models/payment.rs)
+*   [`src/backend/models/billing.rs`](mdc:src/backend/models/billing.rs)
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs)
+*   [`docs/progress.md`](mdc:docs/progress.md)
+
+---
+
+## 2024-07-28: Verify Payment Verification Logic
+
+**Overview:** Reviewed official ICP ledger documentation regarding canister interactions and payment verification patterns.
+
+**Findings:**
+-   The recommended pattern for verifying payments received by a canister involves using the `query_blocks` method on the ledger canister, not `account_balance`.
+-   The current implementation in `src/backend/services/payment_service.rs` uses `account_balance`, which is insufficient as it only checks the current balance and doesn't confirm a specific transaction occurred within the required timeframe.
+
+**Action Item:** The `verify_icp_ledger_payment` function needs to be refactored to use `query_blocks` to search for a specific transaction matching the payment session details (amount, target subaccount, time window).
+
+**Relevant Docs:**
+*   [Using the ICP ledger - Interacting from a canister](https://internetcomputer.org/docs/current/developer-docs/defi/token-ledgers/icp-ledger/usage#interacting-with-icp-from-a-canister-inter-canister-calls-via-ic-cdk)
+*   [Ledger canister specification - query_blocks](https://internetcomputer.org/docs/current/references/ledger#query_blocks)
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs)
+*   [`docs/todo.md`](mdc:docs/todo.md)
+
+--- 
+
+## 2024-07-28: Refactor Payment Verification with ic-ledger-types
+
+**Overview:** Refactored the payment verification logic in `src/backend/services/payment_service.rs` to use the official `ic-ledger-types` crate for interacting with the ICP ledger's `query_blocks` method.
+
+**Key Components Implemented/Updated:**
+-   **Imports:** Added necessary imports from `ic_ledger_types` (`GetBlocksArgs`, `QueryBlocksResponse`, `Block`, `Transaction`, `Operation`, etc.).
+-   **Struct Definitions:** Removed manually defined structs related to `query_blocks` interaction.
+-   **`verify_icp_ledger_payment` Function:**
+    *   Updated function logic to use types from `ic_ledger_types` for arguments (`GetBlocksArgs`) and response handling (`QueryBlocksResponse`).
+    *   Implemented decoding of `EncodedBlock` (from `QueryBlocksResponse.blocks`) into `ic_ledger_types::Block` using `candid::Decode`.
+    *   Updated transaction checking logic to use the fields and methods from `ic_ledger_types::Block`, `ic_ledger_types::Transaction`, `ic_ledger_types::Operation`, and `ic_ledger_types::Tokens` (e.g., `amount.get_e8s()`).
+-   **API Layer:** Updated `VerifyPaymentRequest` in `src/backend/api.rs` to accept an optional `block_index` from the frontend.
+-   **Service Layer:** Updated `verify_payment` and `verify_icp_ledger_payment` signatures to accept the optional `block_index` and prioritize querying that specific block.
+
+**Dependencies:** Relies on `ic-ledger-types` crate (assumed present in `Cargo.toml`).
+
+**Relevant Docs:**
+*   [`src/backend/services/payment_service.rs`](mdc:src/backend/services/payment_service.rs)
+*   [`src/backend/api.rs`](mdc:src/backend/api.rs)
+*   [`docs/progress.md`](mdc:docs/progress.md)
+*   [`docs/todo.md`](mdc:docs/todo.md)
+*   [ic-ledger-types Documentation](https://docs.rs/ic-ledger-types/latest/ic_ledger_types/)
+
 --- 
