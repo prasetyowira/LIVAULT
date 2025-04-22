@@ -155,11 +155,13 @@ Plan price base + actuarial factor (0‑25 % based on age bracket)
       age > 70: 25%
     }
     BaseStoragePrice = {
-      50MB = 3ICP
-      100MB = 4ICP
-      250MB = 10ICP
+      5MB = 3.0 ICP,
+      10MB = 6.0 ICP,
+      50MB = 27.0 ICP,
+      100MB = 55.0 ICP,
+      250MB = 140.0 ICP
     }
-    HeirWitnessFee = (HeirCount × 2ICP) + (WitnessCount × 1ICP)
+    HeirWitnessFee = (HeirCount × 0.5 ICP) + (WitnessCount × 1.0 ICP)
     BasePrice = BaseStoragePrice + HeirWitnessFee
     AdjustedPrice = BasePrice × (1 + AF)
     TimeFactor = (RemainingDays / TotalDays)

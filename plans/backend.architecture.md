@@ -152,8 +152,8 @@ sequenceDiagram
     FE-)Ledger: ICP transfer (wallet)
     FE->>Pay: verify_payment
     Pay->>Ledger: check_tx
-    Ledger-->>Pay: confirmed
-    Pay-->>FE: success
+    Ledger-->>Pay: found / not_found
+    Pay-->>FE: status(pending|success)
     FE->>BE: create_vault
     BE->>SM: insert VaultConfig
     BE-->>FE: vault_id
@@ -283,6 +283,37 @@ Standard Plan uptake (10 MiB each)
 ```
 
 > **Break-even**: Achieved with current pricing structure, with room for future margin or upsell.
+
+### 5.6 Plan Upgrade Rules
+Upgrades between plans are prorated based on the remaining time in the vault's 10-year validity period. The formula is:
+
+```
+AF = { // Actuarial Factor based on age
+  age <= 30: 0%,
+  age 31–40: 5%,
+  age 41–50: 10%,
+  age 51–60: 15%,
+  age 61–70: 20%,
+  age > 70: 25%
+}
+BaseStoragePrice = { // Base price for storage tier
+  5MB = 3.0 ICP,
+  10MB = 6.0 ICP,
+  50MB = 27.0 ICP,
+  100MB = 55.0 ICP,
+  250MB = 140.0 ICP
+}
+HeirWitnessFee = (HeirCount × 0.5 ICP) + (WitnessCount × 1.0 ICP) // Fees for members
+BasePrice = BaseStoragePrice + HeirWitnessFee // Combined base price
+AdjustedPrice = BasePrice × (1 + AF) // Price adjusted for age factor
+TimeFactor = (RemainingDays / TotalDays) // Proration factor based on remaining time
+UpgradeProratePrice = (NewAdjustedPrice - OldAdjustedPrice) × TimeFactor // Final prorated upgrade cost
+```
+- `TotalDays` is assumed to be 3650 (10 years).
+- The `update_vault` endpoint should handle this calculation when a plan change is requested, initiating a new payment session for the `UpgradeProratePrice`.
+
+### 5.7 Refund Policy
+Refunds or cancellations after the initial payment are not permitted. Once a vault is paid for, the one-time fee covers the potential 10-year lifespan, and this commitment is final.
 
 ---
 
