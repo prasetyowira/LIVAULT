@@ -110,6 +110,9 @@ pub enum VaultError {
 
     #[error("Vault unlock conditions have not been met")]
     UnlockConditionsNotMet,
+
+    #[error("Storage quota exceeded for vault: {0}, quota: {1}, used: {2}, diff: {3}")]
+    StorageQuotaExceeded(String, u64, u64, u64),
 }
 
 impl std::fmt::Display for VaultError {
@@ -133,12 +136,24 @@ impl std::fmt::Display for VaultError {
             VaultError::StorageError(s) => write!(f, "Stable storage error: {}", s),
             VaultError::NotAuthorized(s) => write!(f, "Authorization failed: {}", s),
             VaultError::InvalidInput(s) => write!(f, "Invalid input: {}", s),
-            VaultError::InvalidStateTransition => write!(f, "Invalid state transition requested"),
+            VaultError::InvalidStateTransition(s) => write!(f, "Invalid state transition requested {}", s),
             VaultError::InternalError(s) => write!(f, "Internal canister error: {}", s),
             VaultError::SerializationError(s) => write!(f, "Serialization error: {}", s),
             VaultError::HttpError(s) => write!(f, "HTTP outcall error: {}", s),
             VaultError::NotUnlockable => write!(f, "Vault is not in an unlockable state"),
             VaultError::UnlockConditionsNotMet => write!(f, "Vault unlock conditions have not been met"),
+            VaultError::NotFound(s) => write!(f, "Object not found: {}", s),
+            VaultError::TokenInvalid(s) => write!(f, "Token expired or invalid: {}", s),
+            VaultError::RateLimitExceeded(s) => write!(f, "Rate limit exceeded: {}", s),
+            VaultError::ApprovalQuorumNotMet => write!(f, "Approval quorum not met"),
+            VaultError::RecoveryQrBlockedPostSetup => write!(f, "Recovery QR cannot be used after setup completion"),
+            VaultError::CycleLow(amount) => write!(f, "Canister cycle balance too low for operation: {}", amount),
+            VaultError::AdminGuardFailed => write!(f, "Caller is not the designated admin principal"),
+            VaultError::BillingRecordNotFound => write!(f, "Billing record not found"),
+            VaultError::InvalidState(s) => write!(f, "Invalid vault state for operation: {}", s),
+            VaultError::ChecksumMismatch => write!(f, "Checksum mismatch during upload finalization"),
+            VaultError::StorageQuotaExceeded(id, quota, used, diff) =>
+                write!(f, "Storage quota exceeded for vault: {}, quota: {}, used: {}, diff: {}", id, quota, used, diff),
         }
     }
 } 

@@ -138,17 +138,6 @@ pub async fn create_new_vault(init_data: VaultInitData) -> Result<VaultId, Vault
         Some(_) => Err(VaultError::AlreadyExists(vault_id)), // Should not happen if ID is unique
         None => Ok(vault_id),
     }
-    /* // OLD direct access - Incorrect key type!
-    storage::VAULT_CONFIGS.with(|map| {
-        let key = Cbor(vault_id.clone()); // This key is Cbor<Principal>
-        let value = Cbor(config); // Map expects Cbor<String> key
-
-        // Correct match for Option<V> returned by insert
-        match map.borrow_mut().insert(key, value) {
-            Some(_) => Err(VaultError::AlreadyExists(vault_id)), // Should not happen if ID is unique
-            None => Ok(vault_id),
-        }
-    }) */
 }
 
 /// Retrieves a vault's configuration by its ID.
@@ -360,16 +349,6 @@ pub async fn save_vault_config(config: &VaultConfig) -> Result<(), VaultError> {
     // insert_vault_config returns Option<VaultConfig>, not Result.
     // Assume success for now. Add error handling in storage if needed.
     Ok(())
-    /* // OLD Direct Access
-    let key = Cbor(config.vault_id.clone()); // OLD direct access
-    let value = Cbor(config.clone()); // Clone the config to store
-    storage::VAULT_CONFIGS.with(|map| {
-        // Correct match for Option<V> returned by insert
-        match map.borrow_mut().insert(key, value) { // Key type mismatch!
-            Some(_) => Ok(()),
-            None => Ok(()),
-        }
-    }) */
 }
 
 /// Sets the status of a vault. This function should enforce valid state transitions.
@@ -461,22 +440,6 @@ pub async fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, trigg
              }
              // Note: insert_vault_config doesn't return Result.
         }
-        /* // OLD Direct Access
-        storage::VAULT_CONFIGS.with(|map| {
-             let key = Cbor(vault_id.clone());
-             let mut borrowed_map = map.borrow_mut();
-             match borrowed_map.insert(key, Cbor(config)) { // Key type mismatch!
-                 Some(_) => {
-                     let principal_str = triggering_principal.map_or_else(|| "System".to_string(), |p| p.to_string());
-                     ic_cdk::print(format!("📝 INFO: Vault {} status changed from {:?} to {:?} by {}", vault_id, old_status, new_status, principal_str));
-                     Ok(())
-                 },
-                 None => {
-                     // Should not happen if we just fetched it
-                     Err(VaultError::StorageError("Failed to update vault status (vault disappeared?)".to_string()))
-                 },
-             }
-        }) */
     } else {
         Ok(()) // No status change needed
     }
@@ -495,7 +458,6 @@ pub async fn trigger_unlock(vault_id: &VaultId, caller: PrincipalId) -> Result<(
     let config = get_vault_config(vault_id).await?;
 
     // Authorization: Check if caller is a witness or admin (add roles later)
-    // TODO: Implement proper role check using storage::members
     let is_authorized = storage::members::is_member_with_role(vault_id, &caller, Role::Witness).await?
                        || storage::config::get_admin_principal().await? == caller; // Allow admin trigger?
 
@@ -711,53 +673,50 @@ pub async fn delete_vault(vault_id: &VaultId, caller: PrincipalId) -> Result<(),
 
     // --- Cleanup Steps (Placeholders - Require Implementation) ---
 
-    // TODO: Delete associated members from storage::members
+    // Remove members
     match storage::members::remove_members_by_vault(vault_id).await {
         Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} members for vault {}", count, vault_id)),
         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing members for vault {}: {:?}", vault_id, e), // Log error, continue deletion
     }
 
-    // TODO: Delete associated content items (metadata + chunks)
+    // Remove content metadata (chunk removal assumed handled elsewhere or not needed)
     match storage::content::remove_all_content_for_vault(vault_id).await {
          Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} content items for vault {}", count, vault_id)),
          Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing content for vault {}: {:?}", vault_id, e), // Log error, continue deletion
     }
-    // Remove content index separately
+    // Remove content index
     match storage::content_index::remove_index(vault_id).await {
         Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed content index for vault {}", vault_id)),
         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing content index for vault {}: {:?}", vault_id, e),
     }
 
-
-    // TODO: Delete associated invite tokens from storage::tokens (if not handled by scheduler)
+    // Remove invite tokens
     match storage::tokens::remove_tokens_by_vault(vault_id).await {
         Ok(count) => ic_cdk::print(format!("🗑️ INFO: Removed {} tokens for vault {}", count, vault_id)),
         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing tokens for vault {}: {:?}", vault_id, e), // Log error, continue deletion
     }
 
-
-    // TODO: Delete associated audit logs from storage::audit_logs
-    match storage::audit_logs::remove_logs(vault_id).await {
+    // Remove audit logs
+    match storage::audit_logs::remove_audit_logs(vault_id).await {
         Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed audit logs for vault {}", vault_id)),
         Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing audit logs for vault {}: {:?}", vault_id, e), // Log error, continue deletion
     }
 
-    // TODO: Delete associated approvals from storage::approvals
+    // Remove approvals
     match storage::approvals::remove_approvals(vault_id).await {
          Ok(_) => ic_cdk::print(format!("🗑️ INFO: Removed approvals for vault {}", vault_id)),
          Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed removing approvals for vault {}: {:?}", vault_id, e), // Log error, continue deletion
     }
 
-    // --- Final Step: Remove Vault Config ---
+    // --- Final Step: Remove Vault Config & Update Metrics ---
     match storage::vault_configs::remove_vault_config(vault_id).await {
         Ok(Some(_)) => {
             ic_cdk::print(format!("✅ SUCCESS: Vault {} configuration removed.", vault_id));
-            // Optionally, update metrics
-            // storage::metrics::decrement_vault_count().await?;
-             // Set status to Deleted explicitly before final removal? Or just remove.
-             // For consistency, maybe call set_vault_status first, then remove?
-             // set_vault_status(vault_id, VaultStatus::Deleted, Some(caller)).await?;
-             // For now, direct removal after cleanup seems simpler.
+            // Update metrics
+            match storage::metrics::decrement_vault_count().await {
+                Ok(_) => ic_cdk::print(format!("📊 INFO: Decremented vault count metric.")),
+                Err(e) => ic_cdk::eprintln!("❌ ERROR: Failed decrementing vault count metric: {:?}", e),
+            }
              Ok(())
         }
         Ok(None) => {
@@ -771,4 +730,57 @@ pub async fn delete_vault(vault_id: &VaultId, caller: PrincipalId) -> Result<(),
     }
 
     // Note: Billing records are likely kept for historical purposes and not deleted.
+}
+
+/// Internal helper function to update the storage usage for a vault.
+/// Checks against the quota.
+async fn update_storage_usage(vault_id: &VaultId, delta_bytes: i64) -> Result<(), VaultError> {
+    let mut config = storage::vault_configs::get_vault_config(vault_id)
+        .ok_or_else(|| VaultError::VaultNotFound(vault_id.clone().to_string()))?;
+
+    let mut new_usage = config.storage_used_bytes as i64 + delta_bytes;
+
+    // Ensure usage doesn't go below zero (e.g., if multiple deletions happen concurrently)
+    if new_usage < 0 {
+        ic_cdk::eprintln!("⚠️ WARNING: Storage usage calculation for vault {} resulted in negative value. Setting to 0.", vault_id);
+        new_usage = 0;
+    }
+
+    let new_usage_u64 = new_usage as u64;
+
+    // Check against quota if adding bytes
+    if delta_bytes > 0 && new_usage_u64 > config.storage_quota_bytes {
+        return Err(VaultError::StorageQuotaExceeded(
+            vault_id.clone().to_string(),
+            config.storage_quota_bytes,
+            config.storage_used_bytes, // Report usage *before* the attempted addition
+            delta_bytes as u64,
+        ));
+    }
+
+    // Update config if usage changed
+    if config.storage_used_bytes != new_usage_u64 {
+        config.storage_used_bytes = new_usage_u64;
+        config.updated_at = time(); // Also update the vault's general updated_at timestamp
+
+        match storage::vault_configs::insert_vault_config(&config) {
+            Some(_) => {
+                ic_cdk::print(format!(
+                    "💾 INFO: Updated storage usage for vault {} to {} bytes (delta: {}).",
+                    vault_id, new_usage_u64, delta_bytes
+                ));
+            }
+            None => {
+                ic_cdk::eprintln!(
+                    "❌ ERROR: Failed to save updated storage usage for vault {} (config disappeared?).",
+                    vault_id
+                );
+                return Err(VaultError::StorageError(
+                    "Failed to save updated storage usage.".to_string(),
+                ));
+            }
+        }
+    }
+
+    Ok(())
 }

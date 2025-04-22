@@ -106,7 +106,7 @@ pub fn compact_log(vault_id_str: &str, max_entries: usize) -> Result<(), String>
 }
 
 /// Removes the audit log entry for a given vault ID.
-pub async fn remove_logs(vault_id: &VaultId) -> Result<(), String> {
+pub async fn remove_audit_logs(vault_id: &VaultId) -> Result<(), String> {
     let key = create_audit_log_key(&vault_id.to_string());
     LOGS.with(|map_ref| {
         map_ref.borrow_mut().remove(&key);

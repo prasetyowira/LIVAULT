@@ -611,3 +611,22 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
 
 --- 
+
+## 2024-07-29: Implement Vault Storage Usage Tracking
+
+**Overview:** Implemented the storage usage tracking mechanism within `VaultService`.
+
+**Key Components Implemented/Updated:**
+-   **`vault_service.rs`:**
+    *   Added the internal async helper function `update_storage_usage(vault_id: &VaultId, delta_bytes: i64) -> Result<(), VaultError>`.
+    *   This function retrieves the `VaultConfig`, calculates the new `storage_used_bytes`, checks against `storage_quota_bytes`, updates the config, and saves it back to stable storage using `storage::vault_configs::insert_vault_config`.
+
+**Dependencies:** Relies on `storage::vault_configs`.
+
+**Notes:** Services that add or remove content (e.g., `UploadService`, potential `ContentService`) must now call `vault_service::update_storage_usage` to ensure usage is tracked correctly against the quota.
+
+**Relevant Docs:**
+*   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
+*   [`docs/todo.md`](mdc:docs/todo.md) (Updated)
+
+--- 
