@@ -33,3 +33,29 @@ where
         Ok(())
     })
 }
+
+/// Increments the total vault count.
+pub fn increment_vault_count() -> Result<(), String> {
+    update_metrics(|metrics| {
+        metrics.total_vaults = metrics.total_vaults.saturating_add(1);
+    })
+}
+
+/// Decrements the total vault count (e.g., during deletion).
+pub fn decrement_vault_count() -> Result<(), String> {
+    update_metrics(|metrics| {
+        metrics.total_vaults = metrics.total_vaults.saturating_sub(1);
+    })
+}
+
+/// Updates the count of active vaults.
+/// Typically called when a vault transitions into or out of the Active state.
+pub fn update_active_vault_count(delta: i64) -> Result<(), String> {
+    update_metrics(|metrics| {
+        if delta > 0 {
+            metrics.active_vaults = metrics.active_vaults.saturating_add(delta as u32);
+        } else {
+            metrics.active_vaults = metrics.active_vaults.saturating_sub(delta.abs() as u32);
+        }
+    })
+}

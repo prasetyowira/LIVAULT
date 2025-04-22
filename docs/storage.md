@@ -25,10 +25,10 @@ The storage layer is modularized, with each primary data type (or closely relate
 
 -   **Purpose:** Manages the allocation of stable memory regions.
 -   **Key Components:**
-    -   `MemoryId` constants: Unique IDs for each stable data structure (e.g., `VAULT_CONFIG_MEM_ID`, `VAULT_MEMBERS_MEM_ID`, `TOKEN_COUNTER_MEM_ID`).
+    -   `MemoryId` constants: Unique IDs for each stable data structure (e.g., `VAULT_CONFIG_MEM_ID`, `VAULT_MEMBERS_MEM_ID`, `TOKEN_COUNTER_MEM_ID`, `APPROVALS_MEM_ID`).
     -   `MEMORY_MANAGER`: The central `MemoryManager<DefaultMemoryImpl>`.
     -   `get_memory(id: MemoryId)`: Retrieves a `VirtualMemory` instance for a given `MemoryId`.
-    -   Specific getter functions (e.g., `get_vault_config_memory()`, `get_token_counter_memory()`) for each memory region.
+    -   Specific getter functions (e.g., `get_vault_config_memory()`, `get_token_counter_memory()`, `get_approvals_memory()`) for each memory region.
 -   **Usage:** Primarily used internally by other storage modules to obtain the correct memory instance for initializing their stable structures.
 
 ### 2. `storable.rs`
@@ -37,6 +37,7 @@ The storage layer is modularized, with each primary data type (or closely relate
 -   **Key Components:**
     -   `Cbor<T>`: A wrapper struct that implements the `Storable` trait for any type `T` that supports `Serialize + DeserializeOwned`. It uses CBOR for encoding/decoding. `Bound::Unbounded` is used.
     -   `StorableString`: A type alias for `Cbor<String>`, often used as a key type in `StableBTreeMap`.
+    -   `PrincipalBytes`: A type alias for `Vec<u8>`, used for storing Principal bytes as keys in indexes.
 -   **Usage:** Used throughout the storage layer to wrap data models before storing them (e.g., `Cbor<VaultConfig>`, `Cbor<VaultMember>`).
 
 ### 3. `cursor.rs`
@@ -66,13 +67,14 @@ The storage layer is modularized, with each primary data type (or closely relate
 ### 5. `vault_configs.rs`
 
 -   **Purpose:** Stores the main configuration data for each vault.
--   **Data Structure:** `CONFIGS: StableBTreeMap<StorableString, Cbor<VaultConfig>, Memory>` (using `VAULT_CONFIG_MEM_ID`).
--   **Key:** `StorableString` (VaultId Principal serialized to text, e.g., `"aaaaa-aa"`). *Note: Consider migrating to Principal key.*
+-   **Data Structure:** `CONFIGS: StableBTreeMap<VaultId, Cbor<VaultConfig>, Memory>` (using `VAULT_CONFIG_MEM_ID`).
+-   **Key:** `VaultId` (Principal).
 -   **Value:** `Cbor<VaultConfig>`.
 -   **Functions:**
     -   `insert_vault_config(config: &VaultConfig) -> Option<VaultConfig>`: Inserts or updates a vault config. Returns the previous value if any.
     -   `get_vault_config(vault_id: &VaultId) -> Option<VaultConfig>`: Retrieves a vault config by its `VaultId`.
     -   `remove_vault_config(vault_id: &VaultId) -> Option<VaultConfig>`: Removes a vault config. Returns the removed value if any.
+    -   `get_vaults_config_by_owner(owner: Principal) -> Vec<VaultConfig>`: Retrieves all vaults owned by a principal (inefficient iteration).
 -   **Usage:** Central repository for vault settings, status, owner, etc.
 
 ### 6. `members.rs`
@@ -87,6 +89,9 @@ The storage layer is modularized, with each primary data type (or closely relate
     -   `remove_member(vault_id: &VaultId, principal_id: &PrincipalId) -> Option<VaultMember>`: Removes a member.
     -   `get_members_by_vault(vault_id: &VaultId) -> Vec<VaultMember>`: Retrieves all members for a specific vault (uses iteration).
     -   `is_member(vault_id: &VaultId, principal_id: &PrincipalId) -> bool`: Checks if a principal is a member of a vault.
+    -   `get_vaults_by_member(member_principal: PrincipalId) -> Vec<VaultMember>`: Retrieves all vaults a principal is a member of (highly inefficient iteration).
+    -   `is_member_with_role(vault_id: &VaultId, principal_id: &PrincipalId, expected_role: Role) -> Result<bool, VaultError>`: Checks if a principal is a member with a specific role.
+    -   `remove_members_by_vault(vault_id: &VaultId) -> Result<u64, VaultError>`: Removes all members for a specific vault (returns count).
 -   **Usage:** Managing vault membership and roles.
 
 ### 7. `tokens.rs` (Invite Tokens)
@@ -104,6 +109,7 @@ The storage layer is modularized, with each primary data type (or closely relate
     -   `get_token(internal_id: u64) -> Option<VaultInviteToken>`: Retrieves token by internal ID.
     -   `get_internal_token_id(principal: Principal) -> Option<u64>`: Looks up internal ID using the external Principal ID (via index).
     -   `remove_token(internal_id: u64, principal_id: Principal) -> Result<(), VaultError>`: Removes token data from both maps.
+    -   `remove_tokens_by_vault(vault_id: &VaultId) -> Result<u64, VaultError>`: Removes all tokens associated with a specific vault (returns count).
 -   **Usage:** Storing and managing vault invitation tokens.
 
 ### 8. `content.rs`
@@ -122,6 +128,7 @@ The storage layer is modularized, with each primary data type (or closely relate
     -   `get_internal_content_id(principal: Principal) -> Option<u64>`: Looks up internal ID by external Principal ID.
     -   `remove_content(internal_id: u64, principal_id: Principal) -> Result<(), VaultError>`: Removes content metadata.
     -   `update_content(internal_id: u64, updated_item: VaultContentItem) -> Result<(), VaultError>`: Updates content metadata (by internal ID).
+    -   `remove_all_content_for_vault(vault_id: &VaultId) -> Result<u64, VaultError>`: Removes all content metadata for a vault (returns count).
 -   **Usage:** Storing metadata about files, passwords, letters stored in vaults.
 
 ### 9. `content_index.rs`
@@ -132,8 +139,9 @@ The storage layer is modularized, with each primary data type (or closely relate
 -   **Value:** `Cbor<Vec<String>>` (Vector of ContentId Principals serialized to text).
 -   **Functions:**
     -   `add_to_index(vault_id: &VaultId, content_id: &ContentId) -> Result<(), String>`: Appends a content ID string to the vault's index.
-    -   `get_index(vault_id: &VaultId) -> Option<Vec<String>>`: Retrieves the list of content ID strings for a vault.
+    -   `get_index(vault_id: &VaultId) -> Result<Option<Vec<String>>, String>`: Retrieves the list of content ID strings for a vault.
     -   `remove_from_index(vault_id: &VaultId, content_id: &ContentId) -> Result<(), String>`: Removes a specific content ID string from a vault's index.
+    -   `remove_index(vault_id: &VaultId) -> Result<(), String>`: Removes the entire index entry for a vault.
 -   **Usage:** Used to list the content items belonging to a specific vault in a defined order.
 
 ### 10. `uploads.rs`
@@ -168,7 +176,8 @@ The storage layer is modularized, with each primary data type (or closely relate
     -   `add_entry(vault_id_str: &str, entry: AuditLogEntry) -> Result<(), String>`: Appends an entry to a vault's log (retrieves Vec, appends, inserts Vec).
     -   `get_entries(vault_id_str: &str) -> Option<Vec<AuditLogEntry>>`: Retrieves all entries for a vault.
     -   `compact_log(vault_id_str: &str, max_entries: usize) -> Result<(), String>`: Reduces the log size for a vault, keeping the most recent `max_entries`.
--   **Usage:** Recording significant actions performed on vaults. *Note: Current `add_entry` reads/writes the entire vector, potentially inefficient for very long logs.*
+    -   `remove_logs(vault_id: &VaultId) -> Result<(), String>`: Removes the audit log entry for a vault.
+-   **Usage:** Recording significant actions performed on vaults. *Note: Current `add_entry` reads/writes the entire vector, potentially inefficient for very long logs.* Consider using `StableLog` if strict append-only is sufficient.
 
 ### 12. `billing.rs`
 
@@ -187,9 +196,25 @@ The storage layer is modularized, with each primary data type (or closely relate
 -   **Functions:**
     -   `get_metrics() -> VaultMetrics`: Retrieves the current metrics struct.
     -   `update_metrics<F>(update_fn: F) -> Result<(), String>`: Updates the metrics struct using a closure.
+    -   `increment_vault_count() -> Result<(), String>`: Specific helper to increment total vaults.
+    -   `decrement_vault_count() -> Result<(), String>`: Specific helper to decrement total vaults.
+    -   `update_active_vault_count(delta: i64) -> Result<(), String>`: Specific helper to adjust active vault count.
 -   **Usage:** Tracking overall canister state and usage statistics.
 
-### 14. `structures.rs` (Legacy/Utils)
+### 14. `approvals.rs`
+
+-   **Purpose:** Stores approval counts for vaults.
+-   **Data Structure:** `APPROVALS: StableBTreeMap<VaultId, Cbor<ApprovalCounts>, Memory>` (using `APPROVALS_MEM_ID`).
+-   **Key:** `VaultId` (Principal).
+-   **Value:** `Cbor<ApprovalCounts>`.
+-   **Functions:**
+    -   `update_approval_counts(vault_id: &VaultId, counts: ApprovalCounts) -> Result<(), VaultError>`: Stores or updates the approval counts.
+    -   `get_approval_status(vault_id: &VaultId) -> Result<ApprovalCounts, VaultError>`: Retrieves the current approval counts (defaults to 0).
+    -   `remove_approvals(vault_id: &VaultId) -> Result<(), VaultError>`: Removes the approval record for a vault.
+    -   `record_approval(vault_id: &VaultId, role: Role) -> Result<(), VaultError>`: Increments the approval count for a specific role.
+-   **Usage:** Tracking heir and witness approvals required for unlocking a vault.
+
+### 15. `structures.rs` (Legacy/Utils)
 
 -   **Purpose:** Currently holds only the generic `get_value` helper function. Most data structures have been moved to dedicated modules.
 -   **Functions:**

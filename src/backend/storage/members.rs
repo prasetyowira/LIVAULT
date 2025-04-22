@@ -1,7 +1,7 @@
 // src/backend/storage/members.rs
 use crate::storage::memory::{get_vault_members_memory, Memory};
 use crate::storage::storable::Cbor;
-use crate::models::{common::{VaultId, PrincipalId}, vault_config, vault_member::VaultMember};
+use crate::models::{common::{VaultId, PrincipalId, Role}, vault_config, vault_member::VaultMember};
 use ic_stable_structures::StableBTreeMap;
 use std::cell::RefCell;
 use candid::Principal;
@@ -85,11 +85,43 @@ pub fn get_vaults_by_member(member_principal: PrincipalId) -> Vec<VaultConfig> {
     member_vaults
 }
 
-
 /// Checks if a principal is a member of a specific vault.
 pub fn is_member(vault_id: &VaultId, principal_id: &PrincipalId) -> bool {
     let key = (*vault_id, *principal_id);
     MEMBERS.with(|map_ref| {
         map_ref.borrow().contains_key(&key)
     })
+}
+
+/// Checks if a principal is a member of a specific vault with the expected role.
+pub async fn is_member_with_role(vault_id: &VaultId, principal_id: &PrincipalId, expected_role: Role) -> Result<bool, VaultError> {
+    match get_member(vault_id, principal_id) {
+        Some(member) => Ok(member.role == expected_role),
+        None => Ok(false), // Not a member
+    }
+}
+
+/// Removes all members associated with a specific vault.
+/// Returns the number of members removed.
+pub async fn remove_members_by_vault(vault_id: &VaultId) -> Result<u64, VaultError> {
+    let mut members_to_remove = Vec::new();
+    MEMBERS.with(|map_ref| {
+        for ((vid, pid), _) in map_ref.borrow().iter() {
+            if vid == *vault_id {
+                members_to_remove.push((vid, pid));
+            }
+        }
+    });
+
+    let mut removed_count = 0u64;
+    MEMBERS.with(|map_ref| {
+        let mut borrowed_map = map_ref.borrow_mut();
+        for key in members_to_remove {
+            if borrowed_map.remove(&key).is_some() {
+                removed_count += 1;
+            }
+        }
+    });
+
+    Ok(removed_count)
 } 

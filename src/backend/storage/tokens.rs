@@ -6,6 +6,7 @@ use crate::storage::memory::{Memory, get_token_counter_memory, get_invite_tokens
 use ic_stable_structures::{StableCell, StableBTreeMap};
 use std::cell::RefCell;
 use candid::Principal;
+use crate::models::common::VaultId;
 
 type StorableToken = Cbor<VaultInviteToken>;
 type PrincipalBytes = Vec<u8>; // Key for secondary index
@@ -98,4 +99,40 @@ pub fn remove_token(internal_id: u64, principal_id: Principal) -> Result<(), Vau
     }
 
     Ok(())
+}
+
+/// Removes all tokens associated with a specific vault.
+/// Returns the number of tokens removed.
+pub async fn remove_tokens_by_vault(vault_id: &VaultId) -> Result<u64, VaultError> {
+    let mut tokens_to_remove = Vec::new();
+    TOKENS_MAP.with(|map_ref| {
+        for (internal_id, token_cbor) in map_ref.borrow().iter() {
+            if token_cbor.0.vault_id == *vault_id {
+                tokens_to_remove.push((internal_id, token_cbor.0.token_id)); // Store internal ID and Principal ID
+            }
+        }
+    });
+
+    let mut removed_count = 0u64;
+    let mut errors = Vec::new();
+
+    for (internal_id, principal_id) in tokens_to_remove {
+        match remove_token(internal_id, principal_id).await {
+            Ok(_) => removed_count += 1,
+            Err(e) => {
+                ic_cdk::eprintln!("❌ ERROR: Failed removing token {} (internal {}) for vault {}: {:?}", principal_id, internal_id, vault_id, e);
+                errors.push(format!("Failed removing {}: {:?}", principal_id, e));
+            }
+        }
+    }
+
+    if errors.is_empty() {
+        Ok(removed_count)
+    } else {
+        Err(VaultError::StorageError(format!(
+            "Errors during token removal for vault {}: {}",
+            vault_id,
+            errors.join("; ")
+        )))
+    }
 } 

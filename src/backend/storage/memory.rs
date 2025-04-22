@@ -17,6 +17,8 @@ const METRICS_MEM_ID: MemoryId = MemoryId::new(8);
 // Reserve IDs 9-19 for future use
 const BILLING_LOG_INDEX_MEM_ID: MemoryId = MemoryId::new(9);
 const BILLING_LOG_DATA_MEM_ID: MemoryId = MemoryId::new(10);
+const APPROVALS_MEM_ID: MemoryId = MemoryId::new(10);
+
 const STAGING_BUFFER_MEM_ID: MemoryId = MemoryId::new(20);
 const CURSOR_MEM_ID: MemoryId = MemoryId::new(21);
 
@@ -123,6 +125,9 @@ pub fn get_content_counter_memory() -> Memory {
 }
 pub fn get_upload_counter_memory() -> Memory {
     get_memory(UPLOAD_COUNTER_MEM_ID)
+}
+pub fn get_approvals_memory() -> Memory {
+    get_memory(APPROVALS_MEM_ID)
 }
 
 // Functions for Secondary Index Memories

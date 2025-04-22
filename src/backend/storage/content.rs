@@ -6,6 +6,7 @@ use crate::storage::memory::{Memory, get_content_counter_memory, get_content_ite
 use ic_stable_structures::{StableCell, StableBTreeMap};
 use std::cell::RefCell;
 use candid::Principal;
+use crate::models::common::{VaultId, ContentId};
 
 type StorableContent = Cbor<VaultContentItem>;
 type PrincipalBytes = Vec<u8>; // Key for secondary index
@@ -101,4 +102,59 @@ pub fn update_content(internal_id: u64, updated_item: VaultContentItem) -> Resul
            Err(VaultError::NotFound(format!("Content item with internal ID {} not found for update", internal_id)))
        }
    })
+}
+
+/// Removes all content items associated with a specific vault.
+/// This involves fetching the index, then removing items one by one.
+/// Returns the number of content items removed.
+/// Note: Does NOT currently handle associated chunk deletion.
+pub async fn remove_all_content_for_vault(vault_id: &VaultId) -> Result<u64, VaultError> {
+    let content_principal_ids = match super::content_index::get_index(vault_id) {
+        Ok(Some(ids)) => ids,
+        Ok(None) => return Ok(0), // No content index for this vault
+        Err(e) => return Err(VaultError::StorageError(format!("Failed to get content index for vault {}: {}", vault_id, e))),
+    };
+
+    let mut removed_count = 0u64;
+    let mut errors = Vec::new();
+
+    for principal_str in content_principal_ids {
+        match Principal::from_text(&principal_str) {
+            Ok(content_principal) => {
+                if let Some(internal_id) = get_internal_content_id(content_principal) {
+                    match remove_content(internal_id, content_principal).await {
+                        Ok(_) => removed_count += 1,
+                        Err(e) => {
+                            ic_cdk::eprintln!("❌ ERROR: Failed removing content item {} (internal {}) for vault {}: {:?}", principal_str, internal_id, vault_id, e);
+                            errors.push(format!("Failed removing {}: {:?}", principal_str, e));
+                        }
+                    }
+                } else {
+                    ic_cdk::eprintln!("⚠️ WARNING: Content principal {} from index not found in content principal index for vault {}", principal_str, vault_id);
+                    errors.push(format!("Index inconsistency for {}", principal_str));
+                }
+            }
+            Err(e) => {
+                ic_cdk::eprintln!("❌ ERROR: Failed to parse content principal {} from index for vault {}: {:?}", principal_str, vault_id, e);
+                errors.push(format!("Failed parsing {}: {:?}", principal_str, e));
+            }
+        }
+    }
+
+    // After attempting to remove all content, remove the index itself
+    if let Err(e) = super::content_index::remove_index(vault_id).await {
+         ic_cdk::eprintln!("❌ ERROR: Failed removing content index for vault {}: {:?}", vault_id, e);
+         errors.push(format!("Failed removing index: {:?}", e));
+    }
+
+    if errors.is_empty() {
+        Ok(removed_count)
+    } else {
+        // Combine errors into a single message
+        Err(VaultError::StorageError(format!(
+            "Errors during content removal for vault {}: {}",
+            vault_id,
+            errors.join("; ")
+        )))
+    }
 }

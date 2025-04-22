@@ -576,4 +576,38 @@ This aligns with the plan detailed in [`plans/refactor_internal_ids.plan.md`](md
 *   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
 *   [`docs/todo.md`](mdc:docs/todo.md)
 
+---
+
+## 2024-07-29: Implement Missing Storage Layer Functions
+
+**Overview:** Implemented several missing storage layer functions required by `vault_service.rs` and the vault deletion process.
+
+**Key Components Implemented/Updated:**
+-   **`approvals.rs` (New Module):**
+    *   Created the module to store vault approval counts.
+    *   Implemented `get_approval_status`, `remove_approvals`, `record_approval`, and `update_approval_counts`.
+    *   Added relevant memory ID and getter to `memory.rs`.
+-   **`members.rs`:**
+    *   Implemented `is_member_with_role` for role verification.
+    *   Implemented `remove_members_by_vault` for cleanup during vault deletion.
+-   **`content.rs`:**
+    *   Implemented `remove_all_content_for_vault` for cleanup during vault deletion (removes metadata, assumes chunks handled elsewhere or not linked directly).
+-   **`content_index.rs`:**
+    *   Implemented `remove_index` for cleanup during vault deletion.
+-   **`tokens.rs`:**
+    *   Implemented `remove_tokens_by_vault` for cleanup during vault deletion.
+-   **`audit_logs.rs`:**
+    *   Implemented `remove_logs` for cleanup during vault deletion.
+-   **`metrics.rs`:**
+    *   Implemented specific helper functions `increment_vault_count` and `decrement_vault_count` within the existing `update_metrics` framework.
+-   **`storage/mod.rs`:** Updated to include the new `approvals` module and export all newly implemented functions.
+-   **`docs/storage.md`:** Updated to document the new `approvals` module and all added functions in other modules.
+
+**Dependencies:** Relies on existing storage infrastructure and models.
+
+**Relevant Docs:**
+*   [`docs/storage.md`](mdc:docs/storage.md) (Updated)
+*   [`src/backend/storage/*`](mdc:src/backend/storage)
+*   [`src/backend/services/vault_service.rs`](mdc:src/backend/services/vault_service.rs)
+
 --- 

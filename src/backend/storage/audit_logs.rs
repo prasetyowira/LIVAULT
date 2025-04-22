@@ -4,15 +4,19 @@ use crate::models::audit_log::AuditLogEntry;
 use ic_stable_structures::StableBTreeMap;
 use std::cell::RefCell;
 use ic_cdk::api::time;
+use crate::models::common::VaultId;
 
 // Using Vec for now as in structures.rs. Consider StableLog if append-only is sufficient.
 type StorableAuditLogVec = Cbor<Vec<AuditLogEntry>>;
 
+// Key: "audit:{vault_id_principal_string}"
+// Value: Cbor<Vec<AuditLogEntry>>
+type AuditLogMap = StableBTreeMap<StorableString, Cbor<Vec<AuditLogEntry>>, Memory>;
+
 thread_local! {
-    /// Audit Logs: Key = "audit:{vault_id}", Value = Vec<AuditLogEntry>
-    /// Stores audit trail per vault. Capped manually during retrieval or maintenance.
-    pub static LOGS: RefCell<StableBTreeMap<StorableString, StorableAuditLogVec, Memory>> = RefCell::new(
-        StableBTreeMap::init(get_audit_log_data_memory()) // Reusing data memory ID as in structures.rs
+    /// Stable storage for audit logs per vault.
+    static LOGS: RefCell<AuditLogMap> = RefCell::new(
+        AuditLogMap::init(get_audit_log_data_memory())
     );
 }
 
@@ -27,8 +31,8 @@ fn create_audit_log_key(vault_id: &str) -> StorableString {
 /// It retrieves the current log vector, appends the new entry, and saves it back.
 /// Note: This can be potentially expensive for very long logs. Capping/rotation might be needed later.
 pub fn add_entry(vault_id_str: &str, mut entry: AuditLogEntry) -> Result<(), String> {
+    let key = create_audit_log_key(vault_id_str);
     LOGS.with(|map_ref| {
-        let key = create_audit_log_key(vault_id_str);
         let mut map = map_ref.borrow_mut();
 
         // Ensure timestamp and vault_id are set correctly in the entry
@@ -54,10 +58,8 @@ pub fn add_entry(vault_id_str: &str, mut entry: AuditLogEntry) -> Result<(), Str
 /// Helper function to retrieve audit log entries for a specific vault.
 /// Note: This retrieves the entire log. Implement pagination or filtering if needed.
 pub fn get_entries(vault_id_str: &str) -> Option<Vec<AuditLogEntry>> {
-    LOGS.with(|map_ref| {
-        let key = create_audit_log_key(vault_id_str);
-        map_ref.borrow().get(&key).map(|cbor| cbor.0.clone())
-    })
+    let key = create_audit_log_key(vault_id_str);
+    LOGS.with(|map_ref| map_ref.borrow().get(&key).map(|cbor| cbor.0.clone()))
 }
 
 /// Compacts the audit log for a vault, keeping only the most recent entries.
@@ -66,8 +68,8 @@ pub fn compact_log(vault_id_str: &str, max_entries: usize) -> Result<(), String>
         return Err("max_entries must be greater than 0 for compaction".to_string());
     }
 
+    let key = create_audit_log_key(vault_id_str);
     LOGS.with(|map_ref| {
-        let key = create_audit_log_key(vault_id_str);
         let mut map = map_ref.borrow_mut();
 
         if let Some(current_log_vec) = map.get(&key).map(|cbor| cbor.0) {
@@ -101,6 +103,15 @@ pub fn compact_log(vault_id_str: &str, max_entries: usize) -> Result<(), String>
         }
         Ok(())
     })
+}
+
+/// Removes the audit log entry for a given vault ID.
+pub async fn remove_logs(vault_id: &VaultId) -> Result<(), String> {
+    let key = create_audit_log_key(&vault_id.to_string());
+    LOGS.with(|map_ref| {
+        map_ref.borrow_mut().remove(&key);
+    });
+    Ok(())
 }
 
 // Note: No need to log compaction/rotation.
