@@ -8,7 +8,7 @@ use crate::{
         vault_config::VaultConfig, // Import the VaultConfig model
         vault_member::VaultMember, // Needed for listing vaults by member
         UnlockConditions, // Import UnlockConditions
-        payment::{PaymentPurpose, PaymentSession, PaymentInitRequest}, // Import Payment related models
+        payment::{E8s, PaymentPurpose, PaymentSession, PaymentInitRequest}, // Import Payment related models
         // Add other models as needed, e.g., VaultUpdate payload struct
     },
     utils::crypto::generate_unique_principal, // Import Principal generation

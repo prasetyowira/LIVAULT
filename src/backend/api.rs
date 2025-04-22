@@ -5,40 +5,42 @@ use crate::{
     error::VaultError,
     metrics::VaultMetrics, // Import the correct VaultMetrics struct
     models::{
-        common::*, // Includes PrincipalId, VaultId, SessionId, Timestamp, Role, VaultStatus, MemberStatus, etc.
-        vault_config::{VaultConfig, UnlockConditions},
-        vault_invite_token::VaultInviteToken,
-        vault_member::VaultMember, // Use this for the actual member data
-        billing::BillingEntry, // Import BillingEntry
-        payment::{PaymentSession, PayMethod}, // Import PaymentSession & PayMethod directly
+        billing::BillingEntry, // Includes PrincipalId, VaultId, SessionId, Timestamp, Role, VaultStatus, MemberStatus, etc.
+        common::*,
+        payment::{PayMethod, PaymentSession},
+        vault_config::{UnlockConditions, VaultConfig}, // Use this for the actual member data
+        vault_invite_token::VaultInviteToken, // Import BillingEntry
+        vault_member::VaultMember, // Import PaymentSession & PayMethod directly
     },
     services::{
         invite_service::{self, InviteClaimData}, // Removed MemberProfile import from here
-        upload_service::{self, FileMeta, UploadId, ContentId}, // Added ContentId
-        vault_service::{self, VaultInitData, VaultUpdateData},
-        payment_service::{self, PaymentInitRequest as PaymentServiceInitRequest, PaymentSessionStatus}, // Import status struct
+        payment_service::{self, PaymentSessionStatus}, // Added ContentId
         scheduler_service,
+        upload_service::{self, ContentId, FileMeta, UploadId}, // Import status struct
+        vault_service::{self, VaultInitData, VaultUpdateData},
     },
     storage::{
-        get_metrics as get_stored_metrics, // Import storage helper
-        audit_logs::add_audit_log_entry, // Correct path for audit log
-        get_value, // Assuming get_value is pub in storage/mod.rs
-        vault_configs, // For guards potentially
-        billing, // For list_billing
+        audit_logs::add_audit_log_entry, // Import storage helper
+        billing, // Correct path for audit log
+        get_metrics as get_stored_metrics, // Assuming get_value is pub in storage/mod.rs
+        get_value, // For guards potentially
+        vault_configs, // For list_billing
     },
     utils::{
-        guards::{self, check_admin, check_cycles, admin_guard, cron_or_admin_guard, owner_guard, owner_or_heir_guard, member_guard, self_or_owner_guard, role_guard}, // Import guards and named guards
+        guards::{self, admin_guard, check_admin, check_cycles, cron_or_admin_guard, member_guard, owner_guard, owner_or_heir_guard, role_guard, self_or_owner_guard}, // Import guards and named guards
         rate_limit::rate_guard, // Import the rate guard
     },
 };
-use candid::{CandidType, Deserialize, Principal, Nat}; // Import Nat
-use ic_cdk::{caller, api};
+use candid::{CandidType, Deserialize, Nat, Principal}; // Import Nat
+use ic_cdk::{api, caller};
 use ic_cdk::api::{canister_balance128, data_certificate, set_certified_data}; // Import IC APIs
 use ic_cdk_macros::{query, update}; // Use specific import for clarity
 use std::cell::RefCell;
 use std::collections::HashMap;
 use validator::{Validate, ValidationError};
-use serde::{Deserialize, Serialize}; // Import Serialize
+use serde::Serialize;
+use crate::models::payment::PaymentInitRequest as PaymentServiceInitRequest;
+// Import Serialize
 
 // --- Admin Principal (Example - Load from stable memory/config later) ---
 thread_local! {

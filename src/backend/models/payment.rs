@@ -2,7 +2,7 @@
 // Placeholder for PaymentSession struct and related payment models 
 
 use crate::models::common::{PrincipalId, Timestamp};
-use crate::error::{VaultError};
+use crate::error::VaultError;
 use candid::{CandidType, Deserialize};
 use serde::Serialize;
 use std::cell::RefCell;
@@ -120,4 +120,11 @@ where
             .ok_or_else(|| VaultError::PaymentError("Payment session not found".to_string()))
             .and_then(f)
     })
+}
+
+// --- Payment Initialization Struct (from API) ---
+#[derive(Clone, Debug, CandidType, serde::Deserialize)]
+pub struct PaymentInitRequest {
+    pub vault_plan: String,
+    pub amount_e8s: E8s,
 }

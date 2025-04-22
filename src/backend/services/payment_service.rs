@@ -1,20 +1,20 @@
 // src/backend/services/payment_service.rs
 use crate::{
     error::VaultError,
-    models::{common::*, payment::*, billing::BillingEntry, common::VaultStatus},
     models::payment::{store_payment_session, with_payment_session, with_payment_session_mut, PaymentPurpose},
-    utils::crypto::generate_unique_principal,
+    models::{billing::BillingEntry, common::VaultStatus, common::*, payment::*},
     services::vault_service,
     storage,
+    utils::crypto::generate_unique_principal,
 };
 use candid::{CandidType, Principal};
-use ic_cdk::api::{self, time, management_canister::main::raw_rand};
+use ic_cdk::api::{self, management_canister::main::raw_rand, time};
 use ic_ledger_types::{ // Import types from the crate
-    AccountIdentifier,
-    GetBlocksArgs,
-    Operation,
-    QueryBlocksResponse,
-    Subaccount,
+                       AccountIdentifier,
+                       GetBlocksArgs,
+                       Operation,
+                       QueryBlocksResponse,
+                       Subaccount,
 };
 use std::time::Duration;
 
@@ -22,14 +22,7 @@ use std::time::Duration;
 const PAYMENT_SESSION_TIMEOUT_SECONDS: u64 = 30 * 60; // 30 minutes
 const ICP_LEDGER_CANISTER_ID_STR: &str = "ryjl3-tyaaa-aaaaa-aaaba-cai"; // Mainnet ICP Ledger
 
-// --- Payment Initialization Struct (from API) ---
-#[derive(Clone, Debug, CandidType, serde::Deserialize)]
-pub struct PaymentInitRequest {
-    pub vault_plan: String,
-    pub amount_e8s: E8s,
-}
-
-// --- Helper: Derive Subaccount --- 
+// --- Helper: Derive Subaccount ---
 async fn derive_random_subaccount() -> Result<Subaccount, VaultError> {
     let rand_bytes_vec = raw_rand().await
         .map_err(|(code, msg)| VaultError::InternalError(format!("Failed to get random bytes for subaccount: [{:?}] {}", code, msg)))?.0;
