@@ -20,8 +20,9 @@ pub enum VaultStatus {
     Active,         // Vault is active and operational, expiry countdown may start
     GraceMaster,    // Expiry date reached, 14-day grace for master user action
     GraceHeir,      // Master grace period passed, 14-day grace for heirs/witnesses
-    Unlockable,     // Unlock conditions met, content accessible to heirs
-    Expired,        // Unlock window passed, content no longer accessible
+    Unlockable,     // Unlock conditions met (quorum/time/inactivity), content accessible to heirs
+    Unlocked,       // Vault has been explicitly unlocked by heirs/witnesses
+    Expired,        // Unlock window passed, or grace period ended without renewal/unlock
     Deleted,        // Vault permanently deleted after expiry/purge
 }
 

@@ -396,31 +396,38 @@ pub async fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, trigg
 
     let old_status = config.status;
 
-    // --- State Transition Validation (Logic remains the same) ---
+    // --- State Transition Validation (Based on plans/readme.md Lifecycle) ---
     let is_valid_transition = match (old_status, new_status) {
         // Initial Setup Flow
-        (VaultStatus::Draft, VaultStatus::NeedSetup) => true, // After creation + payment verification
-        (VaultStatus::NeedSetup, VaultStatus::Active) => true, // After owner finishes setup (content upload) & invites are claimed (finalize_setup)
+        (VaultStatus::Draft, VaultStatus::NeedSetup) => true, // After payment verification
+        (VaultStatus::NeedSetup, VaultStatus::SetupComplete) => true, // After owner finishes setup (config + invite sent)
+        (VaultStatus::SetupComplete, VaultStatus::Active) => true, // After >= 1 heir joined
 
-        // Normal Operations / Updates
-        (VaultStatus::Active, VaultStatus::Active) => true, // Allow staying Active (e.g., content update)
-        (VaultStatus::Active, VaultStatus::GracePeriodPlan) => true, // Plan expires, moves to grace
-        (VaultStatus::Active, VaultStatus::Unlockable) => true, // Unlock conditions met, triggered by witness
+        // Active State Transitions
+        (VaultStatus::Active, VaultStatus::Active) => true, // Allow updates while active
+        (VaultStatus::Active, VaultStatus::GraceMaster) => true, // Plan expires
 
-        // Unlock Flow
-        (VaultStatus::Unlockable, VaultStatus::Unlocked) => true, // Heir confirms unlock
-        (VaultStatus::Unlocked, VaultStatus::GracePeriodUnlock) => true, // Unlock access window expires
+        // Grace Master Flow
+        (VaultStatus::GraceMaster, VaultStatus::Active) => true, // Plan renewed
+        (VaultStatus::GraceMaster, VaultStatus::GraceHeir) => true, // 14 days passed without owner action
 
-        // Grace Periods & Expiry
-        (VaultStatus::GracePeriodPlan, VaultStatus::Active) => true, // Payment made during grace
-        (VaultStatus::GracePeriodPlan, VaultStatus::Expired) => true, // Grace period ends without payment
-        (VaultStatus::GracePeriodUnlock, VaultStatus::Expired) => true, // Grace period ends after unlock window
+        // Grace Heir Flow
+        (VaultStatus::GraceHeir, VaultStatus::Active) => true, // Plan renewed during heir grace
+        (VaultStatus::GraceHeir, VaultStatus::Unlockable) => true, // Quorum met or QR used
+        (VaultStatus::GraceHeir, VaultStatus::Expired) => true, // 14 days passed without quorum/renewal
 
-        // Deletion (Manual/Cron)
-        (VaultStatus::Expired, VaultStatus::Deleted) => true, // Cron job or admin action cleans up expired vaults
-        (_, VaultStatus::Deleted) => true, // Allow deletion from almost any state (e.g., admin override, edge cases)
+        // Unlockable Flow
+        (VaultStatus::Unlockable, VaultStatus::Unlocked) => true, // After vault explicitly unlocked by heir/witness action
+        (VaultStatus::Unlockable, VaultStatus::Expired) => true, // Optional: Auto-expire if not unlocked within a timeframe (e.g., 1 year)
 
-        // Self-loops are generally allowed if not explicitly denied
+        // Unlocked Flow
+        (VaultStatus::Unlocked, VaultStatus::Expired) => true, // After max plan duration expired or specific unlock access window closes
+
+        // Expiry and Deletion
+        (VaultStatus::Expired, VaultStatus::Deleted) => true, // Admin/cron cleanup
+        (_, VaultStatus::Deleted) => true, // Allow deletion from almost any state (admin override)
+
+        // Self-loops are allowed
         (s1, s2) if s1 == s2 => true,
 
         // Deny all other transitions
@@ -440,11 +447,11 @@ pub async fn set_vault_status(vault_id: &VaultId, new_status: VaultStatus, trigg
         config.status = new_status;
         config.updated_at = time(); // Update timestamp on status change
 
-        // Specific logic for entering certain states
+        // Reinstate logic for unlocked_at
         if new_status == VaultStatus::Unlocked {
             config.unlocked_at = Some(time());
         }
-        // Reset unlocked_at if moving *out* of Unlocked state (e.g., back to Active if that were allowed)
+        // Reset unlocked_at if moving *out* of Unlocked state
         else if old_status == VaultStatus::Unlocked && new_status != VaultStatus::Unlocked {
              config.unlocked_at = None;
         }
@@ -503,9 +510,12 @@ pub async fn trigger_unlock(vault_id: &VaultId, caller: PrincipalId) -> Result<(
     //     return Err(VaultError::NotAuthorized("Only a witness can trigger unlock".to_string()));
     // }
 
-    // Check if vault is in a state where unlock can be triggered (e.g., Active, GraceMaster, GraceHeir)
-    if !matches!(config.status, VaultStatus::Active | VaultStatus::GraceMaster | VaultStatus::GraceHeir) {
-        return Err(VaultError::InternalError(format!("Cannot trigger unlock from status {:?}", config.status)));
+    // Check if vault is in a state where unlock can be triggered (GraceHeir as per diagram)
+    if config.status != VaultStatus::GraceHeir {
+        return Err(VaultError::InternalError(format!(
+            "Cannot trigger unlock from status {:?}. Expected GraceHeir.",
+            config.status
+        )));
     }
 
     // Check unlock conditions (time, inactivity, approvals)

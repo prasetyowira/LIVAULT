@@ -96,9 +96,13 @@ stateDiagram-v2
   NEED_SETUP --> SETUP_COMPLETE: config + invite sent
   SETUP_COMPLETE --> ACTIVE: ≥1 heir joined
   ACTIVE --> GRACE_MASTER: expiration hit
+  GRACE_MASTER --> ACTIVE: plan renewed
   GRACE_MASTER --> GRACE_HEIR: 14d no response
+  GRACE_HEIR --> ACTIVE: plan renewed
   GRACE_HEIR --> UNLOCKABLE: quorum met or QR used
-  GRACE_HEIR --> DELETED: no quorum for 14d
+  UNLOCKABLE --> UNLOCKED: after vault unlocked
+  UNLOCKED --> GRACE_MASTER: after max plan expired
+  GRACE_HEIR --> EXPIRED: no quorum for 14d
   UNLOCKABLE --> EXPIRED: 1y or manual cleanup
   EXPIRED --> DELETED
 ```

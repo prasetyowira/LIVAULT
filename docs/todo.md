@@ -121,7 +121,7 @@ This list compiles outstanding tasks, identified inconsistencies needing resolut
     *   `services/payment_service.rs`: **[X]** Add function to get payment session status.
     *   `services/payment_service.rs`: **[X]** Implement actual billing log query (e.g., get history).
     *   `storage/mod.rs`: **[x]** Add modules for `vault_configs`, `members`, `audit_logs`, etc., if fully modularizing storage. (`members`, `vault_configs`, `audit_logs` modules created).
-    *   `storage/mod.rs`: Fully refactor `structures.rs` into modular components (ongoing).
+    *   `storage/mod.rs`: **[x]** Fully refactor `structures.rs` into modular components.
     *   `storage/content.rs`: **[X]** Add function to update content item (handle secondary index).
     *   `storage/uploads.rs`: **[X]** Define `UploadSession` struct in `models/` (with state like size, chunks, initiator).
     *   `storage/uploads.rs`: **[X]** Determine appropriate memory ID for upload buffer/staging.
